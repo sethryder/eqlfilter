@@ -755,6 +755,13 @@ export default class App extends Component<Props, State> {
     // Clicking a tab also reopens the body if it was collapsed.
     const tabs = tabDefs.map(t => ({ key: t[0], label: t[1], style: tabBtn(this.state.panel === t[0]), onClick: () => this.setState({ panel: t[0], ioCollapsed: false }) }))
 
+    // Share link is a base64 filter in the URL hash. It works at any size, but a
+    // huge one (e.g. "apply to all") won't survive pasting into Discord/most chat
+    // apps, which cap around 2000 chars. Past that, point people at file backup.
+    // Computed only on the share tab so big filters don't re-encode every render.
+    const shareLink = this.state.panel === 'share' ? this.shareUrl() : ''
+    const shareTooLong = shareLink.length > 2000
+
     const fmtAgo = (ts: number) => {
       const d = Math.max(0, Date.now() - ts), m = 60000, h = 3600000, day = 86400000
       if (d < m) return 'just now'
@@ -1144,9 +1151,14 @@ export default class App extends Component<Props, State> {
               <div>
                 <div style={css('font-family:' + th.fu + '; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:' + th.muted + '; margin-bottom:8px;')}>Anyone with this link gets your exact filter loaded</div>
                 <div style={css('display:flex; gap:10px;')}>
-                  <input className="eqi" readOnly value={this.shareUrl()} style={css('flex:1; min-width:0; font-family:' + th.fm + '; font-size:12.5px; color:' + th.text + '; background:' + th.bg + '; border:1px solid ' + th.border + '; border-radius:' + th.radius + '; padding:11px 14px;')} />
-                  <button onClick={() => this.copy(this.shareUrl(), 'share')} style={css('font-family:' + th.fu + '; font-size:12.5px; font-weight:600; color:' + th.accentText + '; background:' + th.accent + '; border:none; border-radius:6px; padding:0 20px; cursor:pointer; white-space:nowrap;')}>{this.state.copied === 'share' ? 'Copied!' : 'Copy link'}</button>
+                  <input className="eqi" readOnly value={shareLink} style={css('flex:1; min-width:0; font-family:' + th.fm + '; font-size:12.5px; color:' + th.text + '; background:' + th.bg + '; border:1px solid ' + th.border + '; border-radius:' + th.radius + '; padding:11px 14px;')} />
+                  <button onClick={() => this.copy(shareLink, 'share')} disabled={shareTooLong} style={css('font-family:' + th.fu + '; font-size:12.5px; font-weight:600; color:' + th.accentText + '; background:' + th.accent + '; border:none; border-radius:6px; padding:0 20px; cursor:' + (shareTooLong ? 'not-allowed' : 'pointer') + '; white-space:nowrap;' + (shareTooLong ? 'opacity:0.5;' : ''))}>{this.state.copied === 'share' ? 'Copied!' : 'Copy link'}</button>
                 </div>
+                {shareTooLong && (
+                  <div style={css('margin-top:9px; font-family:' + th.fu + '; font-size:12px; line-height:1.5; color:' + th.danger + ';')}>
+                    This filter is too big to share as a link ({this.state.rules.length} items). Most chat apps will cut it off — use <strong style={css('color:' + th.text + ';')}>Saved filters ▾ → Backup → Export all</strong> and send the file instead.
+                  </div>
+                )}
               </div>
             )}
           </div>
