@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  ::selection { background: rgba(201,164,90,0.35); }
+  .eqs::-webkit-scrollbar { width: 10px; height: 10px; }
+  .eqs::-webkit-scrollbar-thumb { background: var(--border, #343a44); border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
+  .eqs::-webkit-scrollbar-track { background: transparent; }
+  input:focus, textarea:focus, select:focus { outline: none; }
+  .eqi::placeholder { color: var(--muted, #9b968c); opacity: 0.7; }
+</style>
+</helmet>
+
+<div style="{{ rootStyle }}">
+
+  <header style="display:flex; align-items:center; gap:18px; padding:14px 22px; border-bottom:1px solid var(--border,#343a44); background:var(--panel,#1d2026); flex:none;">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <div style="width:30px; height:30px; transform:rotate(45deg); border:2px solid var(--accent,#c9a45a); background:linear-gradient(135deg, var(--accent,#c9a45a) 0%, transparent 60%); border-radius:5px;"></div>
+      <div style="display:flex; flex-direction:column; line-height:1;">
+        <div style="font-family:var(--font-display); font-weight:700; font-size:20px; letter-spacing:0.06em; color:var(--text,#e8e4da);">EQL&nbsp;FILTER</div>
+        <div style="font-family:var(--font-ui); font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:var(--muted,#9b968c); margin-top:4px;">EverQuest Legends · Loot Filter Builder</div>
+      </div>
+    </div>
+
+    <div style="flex:1;"></div>
+
+    <div data-filter-menu="1" style="position:relative; display:flex; align-items:center; gap:8px;">
+      <span style="font-size:11px; text-transform:uppercase; letter-spacing:0.12em; color:var(--muted,#9b968c);">Filter</span>
+      <input class="eqi" value="{{ name }}" onChange="{{ setName }}" placeholder="Filter name" style="font-family:var(--font-ui); font-size:14px; font-weight:500; color:var(--text,#e8e4da); background:var(--panel2,#252932); border:1px solid var(--border,#343a44); border-radius:var(--radius,8px) 0 0 var(--radius,8px); border-right:none; padding:9px 13px; width:200px;"/>
+      <button onClick="{{ toggleMenu }}" title="Saved filters" style="display:flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:12px; color:var(--muted,#9b968c); background:var(--panel2,#252932); border:1px solid var(--border,#343a44); border-radius:0 var(--radius,8px) var(--radius,8px) 0; border-left:none; padding:9px 11px; cursor:pointer; height:38px; margin-left:-8px;">
+        <span>{{ savedCount }}</span>
+        <span style="font-size:9px;">▾</span>
+      </button>
+
+      <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute; top:46px; right:0; width:300px; background:var(--panel,#1d2026); border:1px solid var(--border,#343a44); border-radius:var(--radius,8px); box-shadow:0 18px 50px rgba(0,0,0,0.5); z-index:50; overflow:hidden;">
+          <div style="padding:11px 14px; border-bottom:1px solid var(--border,#343a44); display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-family:var(--font-ui); font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted,#9b968c);">Saved Filters</span>
+            <span style="font-family:var(--font-mono); font-size:11px; color:var(--muted,#9b968c);">{{ savedCount }} saved</span>
+          </div>
+          <div class="eqs" style="max-height:280px; overflow-y:auto; padding:6px;">
+            <sc-for list="{{ savedList }}" as="f" hint-placeholder-count="2">
+              <div style="{{ f.rowStyle }}">
+                <button onClick="{{ f.load }}" style="flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; text-align:left; background:transparent; border:none; cursor:pointer; padding:0;">
+                  <span style="font-family:var(--font-ui); font-size:13.5px; color:var(--text,#e8e4da); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ f.name }}</span>
+                  <span style="font-family:var(--font-ui); font-size:10.5px; color:var(--muted,#9b968c);">{{ f.meta }}</span>
+                </button>
+                <sc-if value="{{ f.isCurrent }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:9px; font-weight:700; letter-spacing:0.08em; color:var(--accentText,#15171b); background:var(--accent,#c9a45a); border-radius:4px; padding:3px 6px; white-space:nowrap;">CURRENT</span>
+                </sc-if>
+                <button onClick="{{ f.remove }}" title="Delete" style="flex:none; width:26px; height:26px; border:1px solid var(--border,#343a44); background:transparent; color:var(--muted,#9b968c); border-radius:5px; cursor:pointer; font-size:13px;" style-hover="color:var(--danger,#d9694a); border-color:var(--danger,#d9694a);">×</button>
+              </div>
+            </sc-for>
+            <sc-if value="{{ noSaved }}" hint-placeholder-val="{{ false }}">
+              <div style="text-align:center; padding:18px 12px; color:var(--muted,#9b968c); font-size:12.5px; font-family:var(--font-ui);">No saved filters yet. Hit <strong style="color:var(--text,#e8e4da);">Save</strong> to keep this one.</div>
+            </sc-if>
+          </div>
+          <div style="padding:9px; border-top:1px solid var(--border,#343a44); display:flex; gap:7px;">
+            <button onClick="{{ saveCurrent }}" style="flex:1; font-family:var(--font-ui); font-size:12.5px; font-weight:600; color:var(--accentText,#15171b); background:var(--accent,#c9a45a); border:none; border-radius:6px; padding:8px 0; cursor:pointer;">{{ saveLabel }}</button>
+            <button onClick="{{ newFilter }}" style="flex:1; font-family:var(--font-ui); font-size:12.5px; font-weight:500; color:var(--text,#e8e4da); background:transparent; border:1px solid var(--border,#343a44); border-radius:6px; padding:8px 0; cursor:pointer;">New filter</button>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+
+    <button onClick="{{ toggleMode }}" title="{{ modeTitle }}" style="display:flex; align-items:center; justify-content:center; width:38px; height:38px; font-size:16px; line-height:1; color:var(--text,#e8e4da); background:var(--panel2,#252932); border:1px solid var(--border,#343a44); border-radius:var(--radius,8px); cursor:pointer;">{{ modeIcon }}</button>
+
+    <button onClick="{{ clearAll }}" style="font-family:var(--font-ui); font-size:13px; font-weight:500; color:var(--muted,#9b968c); background:transparent; border:1px solid var(--border,#343a44); border-radius:var(--radius,8px); padding:9px 14px; cursor:pointer;">Clear items</button>
+  </header>
+
+  <main style="flex:1; min-height:0; display:grid; grid-template-columns:380px 1fr; gap:18px; padding:18px 22px;">
+
+    <!-- LIBRARY -->
+    <section style="display:flex; flex-direction:column; min-height:0; background:var(--panel,#1d2026); border:1px solid var(--border,#343a44); border-radius:var(--radius,8px);">
+      <div style="padding:14px 16px 12px; border-bottom:1px solid var(--border,#343a44);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:11px;">
+          <h2 style="margin:0; font-family:var(--font-display); font-weight:600; font-size:15px; letter-spacing:0.05em; color:var(--text,#e8e4da);">Item Library</h2>
+          <span style="font-family:var(--font-mono); font-size:11px; color:var(--muted,#9b968c);">{{ resultCount }} items</span>
+        </div>
+        <input class="eqi" value="{{ query }}" onChange="{{ setQuery }}" onKeyDown="{{ onSearchKey }}" placeholder="Search items…" style="width:100%; font-family:var(--font-ui); font-size:14px; color:var(--text,#e8e4da); background:var(--panel2,#252932); border:1px solid var(--border,#343a44); border-radius:var(--radius,8px); padding:10px 13px;"/>
+        <select value="{{ zone }}" onChange="{{ setZone }}" class="eqi" style="width:100%; margin-top:9px; font-family:var(--font-ui); font-size:13px; color:var(--text,#e8e4da); background:var(--panel2,#252932); border:1px solid var(--border,#343a44); border-radius:var(--radius,8px); padding:9px 12px; cursor:pointer;">
+          <sc-for list="{{ zoneOptions }}" as="z" hint-placeholder-count="2">
+            <option value="{{ z.value }}" style="color:#15171b;">{{ z.label }}</option>
+          </sc-for>
+        </select>
+        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:11px;">
+          <sc-for list="{{ categories }}" as="c" hint-placeholder-count="7">
+            <button onClick="{{ c.onClick }}" style="{{ c.style }}">{{ c.key }}</button>
+          </sc-for>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border,#343a44);">
+          <span style="font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted,#9b968c); white-space:nowrap;">New items add as →</span>
+          <div style="display:flex; gap:5px; flex:1;">
+            <sc-for list="{{ addAsActions }}" as="a" hint-placeholder-count="4">
+              <button onClick="{{ a.onClick }}" style="{{ a.style }}">{{ a.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; margin-top:9px;">
+          <span style="font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted,#9b968c); white-space:nowrap;">Apply to all {{ filterMatchCount }} →</span>
+          <div style="display:flex; gap:5px; flex:1;">
+            <sc-for list="{{ bulkActions }}" as="b" hint-placeholder-count="4">
+              <button onClick="{{ b.onClick }}" style="{{ b.style }}">{{ b.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <div class="eqs" style="flex:1; min-height:0; overflow-y:auto; padding:8px;">
+        <sc-if value="{{ canAddCustom }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ addCustom }}" style="width:100%; display:flex; align-items:center; gap:10px; text-align:left; background:transparent; border:1px dashed var(--accent,#c9a45a); border-radius:var(--radius,8px); padding:10px 12px; margin-bottom:6px; cursor:pointer; color:var(--accent,#c9a45a); font-family:var(--font-ui); font-size:13px;">
+            <span style="font-size:15px; line-height:1;">+</span>
+            <span>Add custom item “<strong>{{ query }}</strong>”</span>
+          </button>
+        </sc-if>
+        <sc-for list="{{ searchResults }}" as="it" hint-placeholder-count="9">
+          <button onClick="{{ it.add }}" style="width:100%; display:flex; align-items:center; gap:11px; text-align:left; background:transparent; border:1px solid transparent; border-radius:var(--radius,8px); padding:8px 10px; cursor:pointer;" style-hover="background:var(--panel2,#252932); border:1px solid var(--border,#343a44);">
+            <span style="{{ it.dotStyle }}">{{ it.glyph }}</span>
+            <span style="flex:1; min-width:0; display:flex; flex-direction:column; gap:2px;">
+              <span style="font-family:var(--font-ui); font-size:13.5px; color:var(--text,#e8e4da); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ it.name }}</span>
+              <span style="font-family:var(--font-ui); font-size:10.5px; letter-spacing:0.04em; color:var(--muted,#9b968c);">{{ it.sub }}</span>
+            </span>
+            <span style="{{ addBadgeStyle }}">+ {{ addAction }}</span>
+          </button>
+        </sc-for>
+        <sc-if value="{{ noResults }}" hint-placeholder-val="{{ false }}">
+          <div style="text-align:center; padding:30px 16px; color:var(--muted,#9b968c); font-size:13px; font-family:var(--font-ui);">No matching items.</div>
+        </sc-if>
+      </div>
+    </section>
+
+    <!-- FILTER -->
+    <section style="display:flex; flex-direction:column; min-height:0; background:var(--panel,#1d2026); border:1px solid var(--border,#343a44); border-radius:var(--radius,8px);">
+      <div style="padding:14px 18px; border-bottom:1px solid var(--border,#343a44); display:flex; align-items:center; gap:14px;">
+        <h2 style="margin:0; font-family:var(--font-display); font-weight:600; font-size:15px; letter-spacing:0.05em; color:var(--text,#e8e4da);">Your Filter</h2>
+        <div style="display:flex; gap:7px; flex-wrap:wrap;">
+          <sc-for list="{{ summary }}" as="s" hint-placeholder-count="4">
+            <button onClick="{{ s.onClick }}" style="{{ s.style }}"><span style="width:7px; height:7px; border-radius:50%; background:{{ s.color }}; display:inline-block;"></span>{{ s.label }} <strong style="font-family:var(--font-mono);">{{ s.count }}</strong></button>
+          </sc-for>
+        </div>
+        <div style="flex:1;"></div>
+        <span style="{{ totalStyle }}">{{ total }} rules</span>
+      </div>
+
+      <!-- column headers -->
+      <div style="display:grid; grid-template-columns:1fr 280px 34px; gap:12px; padding:9px 18px; border-bottom:1px solid var(--border,#343a44); background:var(--panel2,#252932);">
+        <span style="font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:var(--muted,#9b968c);">Item</span>
+        <span style="font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:var(--muted,#9b968c); text-align:center;">Action</span>
+        <span></span>
+      </div>
+
+      <div class="eqs" style="flex:1; min-height:0; overflow-y:auto;">
+        <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:40px; text-align:center;">
+            <div style="width:46px; height:46px; transform:rotate(45deg); border:2px dashed var(--border,#343a44); border-radius:6px;"></div>
+            <div style="font-family:var(--font-display); font-size:16px; color:var(--text,#e8e4da);">No items yet</div>
+            <div style="font-family:var(--font-ui); font-size:13px; color:var(--muted,#9b968c); max-width:320px;">Search the library on the left and add items one at a time, or use <strong style="color:var(--text,#e8e4da);">Apply to all</strong> to set an action for a whole category at once.</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ filteredEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; align-items:center; justify-content:center; gap:10px; padding:34px; text-align:center; font-family:var(--font-ui); font-size:13px; color:var(--muted,#9b968c);">
+            <span>No <strong style="color:var(--text,#e8e4da);">{{ ruleFilterLabel }}</strong> rules.</span>
+            <button onClick="{{ clearRuleFilter }}" style="font-family:var(--font-ui); font-size:12px; font-weight:600; color:var(--accent,#c9a45a); background:transparent; border:1px solid var(--border,#343a44); border-radius:6px; padding:5px 11px; cursor:pointer;">Show all</button>
+          </div>
+        </sc-if>
+        <sc-for list="{{ rows }}" as="r" hint-placeholder-count="6">
+          <div style="display:grid; grid-template-columns:1fr 280px 34px; gap:12px; align-items:center; padding:var(--rowpad,12px 18px); border-bottom:1px solid var(--border,#343a44);">
+            <div style="display:flex; align-items:center; gap:11px; min-width:0;">
+              <span style="{{ r.dotStyle }}">{{ r.glyph }}</span>
+              <span style="display:flex; flex-direction:column; gap:2px; min-width:0;">
+                <span style="font-family:var(--font-ui); font-size:14px; color:var(--text,#e8e4da); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.name }}</span>
+                <span style="font-family:var(--font-ui); font-size:10.5px; letter-spacing:0.04em; color:var(--muted,#9b968c);">{{ r.sub }}</span>
+              </span>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:5px;">
+              <sc-for list="{{ r.actions }}" as="a" hint-placeholder-count="4">
+                <button onClick="{{ a.onClick }}" style="{{ a.style }}">{{ a.label }}</button>
+              </sc-for>
+            </div>
+            <button onClick="{{ r.remove }}" title="Remove" style="width:30px; height:30px; border:1px solid var(--border,#343a44); background:transparent; color:var(--muted,#9b968c); border-radius:6px; cursor:pointer; font-size:15px; line-height:1;" style-hover="color:var(--danger,#d9694a); border-color:var(--danger,#d9694a);">×</button>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+  </main>
+
+  <!-- BOTTOM: IO PANEL -->
+  <footer style="flex:none; border-top:1px solid var(--border,#343a44); background:var(--panel,#1d2026);">
+    <div onMouseDown="{{ startResize }}" title="Drag to resize" style="height:9px; cursor:ns-resize; display:flex; align-items:center; justify-content:center; background:var(--panel2,#252932); border-bottom:1px solid var(--border,#343a44);">
+      <div style="width:42px; height:3px; border-radius:3px; background:var(--border,#343a44);"></div>
+    </div>
+    <div style="display:flex; align-items:stretch; gap:0; padding:0 22px; border-bottom:1px solid var(--border,#343a44);">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+        <button onClick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }}</button>
+      </sc-for>
+      <div style="flex:1;"></div>
+      <button onClick="{{ toggleIoMax }}" title="{{ ioMaxTitle }}" style="display:flex; align-items:center; gap:7px; font-family:var(--font-ui); font-size:12px; font-weight:500; color:var(--muted,#9b968c); background:transparent; border:none; padding:0 4px; cursor:pointer;">
+        <span style="font-size:13px; line-height:1;">{{ ioMaxIcon }}</span><span>{{ ioMaxLabel }}</span>
+      </button>
+    </div>
+
+    <div style="padding:14px 22px 18px;">
+      <!-- EXPORT -->
+      <sc-if value="{{ showIni }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex; gap:16px; align-items:flex-start;">
+          <div style="flex:1; min-width:0;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+              <span style="font-family:var(--font-ui); font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted,#9b968c);">filter.ini · placeholder format</span>
+              <div style="display:flex; gap:8px;">
+                <button onClick="{{ downloadIni }}" style="font-family:var(--font-ui); font-size:12.5px; font-weight:600; color:var(--text,#e8e4da); background:transparent; border:1px solid var(--border,#343a44); border-radius:6px; padding:7px 16px; cursor:pointer;">Download .ini</button>
+                <button onClick="{{ copyIni }}" style="font-family:var(--font-ui); font-size:12.5px; font-weight:600; color:var(--accentText,#15171b); background:var(--accent,#c9a45a); border:none; border-radius:6px; padding:7px 16px; cursor:pointer;">{{ copyIniLabel }}</button>
+              </div>
+            </div>
+            <textarea class="eqs" readonly value="{{ iniText }}" style="width:100%; height:{{ ioHeightPx }}; resize:none; font-family:var(--font-mono); font-size:12.5px; line-height:1.55; color:var(--text,#e8e4da); background:var(--bg,#15171b); border:1px solid var(--border,#343a44); border-radius:var(--radius,8px); padding:12px 14px;"></textarea>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- IMPORT -->
+      <sc-if value="{{ showImport }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+            <span style="font-family:var(--font-ui); font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted,#9b968c);">Paste an exported .ini and load it</span>
+            <button onClick="{{ doImport }}" style="font-family:var(--font-ui); font-size:12.5px; font-weight:600; color:var(--accentText,#15171b); background:var(--accent,#c9a45a); border:none; border-radius:6px; padding:7px 16px; cursor:pointer;">Load filter</button>
+          </div>
+          <textarea class="eqs eqi" value="{{ importText }}" onChange="{{ setImport }}" placeholder="[Filter]&#10;Name=My Loot Filter&#10;&#10;[Rules]&#10;Gnoll Fang=Sell&#10;Blackburrow Gnoll Pelt=Store" style="width:100%; height:{{ ioHeightPx }}; resize:none; font-family:var(--font-mono); font-size:12.5px; line-height:1.55; color:var(--text,#e8e4da); background:var(--bg,#15171b); border:1px solid var(--border,#343a44); border-radius:var(--radius,8px); padding:12px 14px;"></textarea>
+        </div>
+      </sc-if>
+
+      <!-- SHARE -->
+      <sc-if value="{{ showShare }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="font-family:var(--font-ui); font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted,#9b968c); margin-bottom:8px;">Anyone with this link gets your exact filter loaded</div>
+          <div style="display:flex; gap:10px;">
+            <input class="eqi" readonly value="{{ shareUrl }}" style="flex:1; min-width:0; font-family:var(--font-mono); font-size:12.5px; color:var(--text,#e8e4da); background:var(--bg,#15171b); border:1px solid var(--border,#343a44); border-radius:var(--radius,8px); padding:11px 14px;"/>
+            <button onClick="{{ copyShare }}" style="font-family:var(--font-ui); font-size:12.5px; font-weight:600; color:var(--accentText,#15171b); background:var(--accent,#c9a45a); border:none; border-radius:6px; padding:0 20px; cursor:pointer; white-space:nowrap;">{{ copyShareLabel }}</button>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </footer>
+
+  <!-- SITE FOOTER -->
+  <div style="flex:none; display:flex; align-items:center; gap:18px; flex-wrap:wrap; padding:11px 22px; border-top:1px solid var(--border,#343a44); background:var(--bg,#15171b);">
+    <span style="font-family:var(--font-ui); font-size:11.5px; color:var(--muted,#9b968c); white-space:nowrap;">© {{ year }} EQLFilter · eqlfilter.com</span>
+    <span style="font-family:var(--font-ui); font-size:11.5px; line-height:1.5; color:var(--muted,#9b968c); flex:1; min-width:240px; opacity:0.85;">EverQuest is a registered trademark of Daybreak Game Company LLC. EQLFilter is an unofficial fan project, not affiliated with or endorsed by Daybreak.</span>
+    <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">
+      <span style="font-family:var(--font-ui); font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted,#9b968c); white-space:nowrap;">More projects</span>
+      <sc-for list="{{ projects }}" as="p" hint-placeholder-count="2">
+        <a href="{{ p.href }}" target="_blank" rel="noopener" title="{{ p.title }}" style="display:inline-flex; align-items:center; gap:6px; font-family:var(--font-ui); font-size:11.5px; font-weight:600; text-decoration:none; color:var(--text,#e8e4da); background:var(--panel,#1d2026); border:1px solid var(--border,#343a44); border-radius:20px; padding:5px 12px;" style-hover="border-color:var(--accent,#c9a45a); color:var(--accent,#c9a45a);">
+          <span style="width:6px; height:6px; border-radius:50%; background:var(--accent,#c9a45a);"></span>{{ p.label }}
+        </a>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:820},&quot;skin&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Command Deck&quot;,&quot;Parchment&quot;,&quot;Terminal&quot;],&quot;default&quot;:&quot;Command Deck&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;},&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Comfortable&quot;,&quot;Compact&quot;],&quot;default&quot;:&quot;Comfortable&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    // Real items sourced from the EQL Wiki (eqlwiki.com) zone "Known Loot" tables.
+    // Format: [name, type, slot, zone]. Add more zones here as they are catalogued.
+    const raw = [
+      ["Gnoll Hide Lariat","Weapon","1H Slash","Blackburrow"],
+      ["Keg Mallet","Weapon","1H Blunt","Blackburrow"],
+      ["Runed Totem Staff","Weapon","2H Blunt","Blackburrow"],
+      ["Sabertooth Short Bow","Weapon","Range","Blackburrow"],
+      ["Sharp Claws","Weapon","Hand to Hand","Blackburrow"],
+      ["Wooden Totem","Weapon","Primary","Blackburrow"],
+      ["Clay Totem","Weapon","Primary","Blackburrow"],
+      ["Crude Arrow","Weapon","Ammo","Blackburrow"],
+      ["Balanced Rat Tooth","Weapon","Ammo","Blackburrow"],
+      ["Bark Splinted Shoulderpads","Armor","Shoulders","Blackburrow"],
+      ["Dark Runed Leggings","Armor","Legs","Blackburrow"],
+      ["Darkpaw Sash","Armor","Waist","Blackburrow"],
+      ["Hardened Bark Breastplate","Armor","Chest","Blackburrow"],
+      ["Ill-Fitting Robes","Armor","Chest","Blackburrow"],
+      ["Ill-Fitting Slippers","Armor","Feet","Blackburrow"],
+      ["Pub Pants","Armor","Legs","Blackburrow"],
+      ["Raw-Hide Arm Guard","Armor","Wrist","Blackburrow"],
+      ["Refugee Shroud","Armor","Shoulders","Blackburrow"],
+      ["Runed Sabertooth Girdle","Armor","Waist","Blackburrow"],
+      ["Runed Shawl","Armor","Shoulders","Blackburrow"],
+      ["Rusty Spiked Shoulderpads","Armor","Shoulders","Blackburrow"],
+      ["Sharpshooter's Bandana","Armor","Head","Blackburrow"],
+      ["Vagrant's Tunic","Armor","Chest","Blackburrow"],
+      ["Well Worn Boots","Armor","Feet","Blackburrow"],
+      ["Wicked Sallet","Armor","Head","Blackburrow"],
+      ["An Elven Charm Necklace","Jewelry","Neck","Blackburrow"],
+      ["Elven Charm Necklace","Jewelry","Neck","Blackburrow"],
+      ["Onyx Earring","Jewelry","Ear","Blackburrow"],
+      ["Rat Paw Talisman","Jewelry","Neck","Blackburrow"],
+      ["Spiked Collar","Jewelry","Neck","Blackburrow"],
+      ["Studded Leather Collar","Jewelry","Neck","Blackburrow"],
+      ["Burrowing Goggles","Jewelry","Face","Blackburrow"],
+      ["Blackburrow Gnoll Pelt","Tradeskill","Pelt","Blackburrow"],
+      ["Blackburrow Gnoll Skin","Tradeskill","Skin","Blackburrow"],
+      ["Ruined Blackburrow Gnoll Pelt","Tradeskill","Pelt","Blackburrow"],
+      ["Gnoll Fang","Tradeskill","Turn-in","Blackburrow"],
+      ["Patch of Gnoll Fur","Tradeskill","Quest","Blackburrow"],
+      ["Gnoll Pup Scalp","Tradeskill","Quest","Blackburrow"],
+      ["Blackburrow Cask","Container","Container","Blackburrow"],
+      ["Baby Joseph Sayer","Misc","Quest","Blackburrow"],
+      ["Gnoll Head","Misc","Quest","Blackburrow"],
+      ["Gnoll Pelvis","Misc","Quest","Blackburrow"]
+    ];
+    // Inline fallback so the builder always renders even if the item DB can't load.
+    this.catalog = raw.map((r, i) => ({ id: "i" + i, name: r[0], type: r[1], slot: r[2], zone: r[3], flags: [] }));
+    this.actionKeys = ["Loot", "Merge", "Store", "Sell"];
+  }
+
+  // Replace the catalog with the generated item database (eql-items.json).
+  setCatalog(list) {
+    if (!Array.isArray(list) || !list.length) return;
+    this.catalog = list.map((c, i) => ({
+      id: "j" + i, name: c.name, type: c.type || "Misc",
+      slot: c.slot || "—", zone: c.zone || "", flags: Array.isArray(c.flags) ? c.flags : []
+    }));
+    this.forceUpdate();
+  }
+
+  state = {
+    name: "My Loot Filter",
+    query: "",
+    cat: "All",
+    zone: "All",
+    rules: [
+      { name: "Sabertooth Short Bow", action: "Loot" },
+      { name: "Hardened Bark Breastplate", action: "Loot" },
+      { name: "Blackburrow Gnoll Pelt", action: "Store" },
+      { name: "Onyx Earring", action: "Sell" }
+    ],
+    panel: "ini",
+    importText: "",
+    copied: "",
+    ruleFilter: "All",  // summary chip filter for the rules list
+    addAction: "Loot",  // action assigned to newly added items
+    ioHeight: 140,      // resizable height (px) of the export/import text area
+    ioMax: false,       // expanded (tall) mode
+    mode: null,         // 'dark' (Command Deck) | 'light' (Parchment); null = use prop/default
+    saved: [],          // [{ id, name, rules, updated }]
+    currentId: null,    // id of the saved filter currently loaded, if any
+    menuOpen: false
+  };
+
+  STORE_KEY = "eqlfilter.saved.v1";
+
+  loadSaved() {
+    try {
+      const raw = localStorage.getItem(this.STORE_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+  persist(saved) {
+    try { localStorage.setItem(this.STORE_KEY, JSON.stringify(saved)); } catch (e) {}
+  }
+  newId() { return "flt_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+  saveCurrent() {
+    this.setState(s => {
+      const entry = { name: s.name || "Untitled Filter", rules: s.rules.map(r => ({ name: r.name, action: r.action })), updated: Date.now() };
+      let saved = s.saved.slice();
+      const idx = s.currentId ? saved.findIndex(f => f.id === s.currentId) : -1;
+      let id = s.currentId;
+      if (idx >= 0) {
+        saved[idx] = { ...saved[idx], ...entry };
+      } else {
+        id = this.newId();
+        saved = [{ id, ...entry }, ...saved];
+      }
+      this.persist(saved);
+      return { saved, currentId: id, menuOpen: false };
+    });
+  }
+  loadFilter(id) {
+    const f = this.state.saved.find(x => x.id === id);
+    if (!f) return;
+    this.setState({ name: f.name, rules: f.rules.map(r => ({ name: r.name, action: r.action })), currentId: id, menuOpen: false });
+  }
+  deleteFilter(id) {
+    this.setState(s => {
+      const saved = s.saved.filter(f => f.id !== id);
+      this.persist(saved);
+      return { saved, currentId: s.currentId === id ? null : s.currentId };
+    });
+  }
+  newFilter() {
+    this.setState({ name: "New Filter", rules: [], currentId: null, menuOpen: false, query: "" });
+  }
+  toggleMenu() { this.setState(s => ({ menuOpen: !s.menuOpen })); }
+
+  startResize(e) {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = this.state.ioHeight;
+    const MIN = 90, MAX = 620;
+    const onMove = (ev) => {
+      // dragging up (smaller clientY) grows the panel
+      const h = Math.max(MIN, Math.min(MAX, startH + (startY - ev.clientY)));
+      this.setState({ ioHeight: h, ioMax: false });
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.userSelect = "";
+    };
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+  toggleIoMax() { this.setState(s => ({ ioMax: !s.ioMax })); }
+
+  currentMode() {
+    if (this.state.mode) return this.state.mode;
+    return this.props.skin === "Parchment" ? "light" : "dark";
+  }
+  toggleMode() {
+    const next = this.currentMode() === "dark" ? "light" : "dark";
+    try { localStorage.setItem(this.MODE_KEY, next); } catch (e) {}
+    this.setState({ mode: next });
+  }
+
+  DRAFT_KEY = "eqlfilter.draft.v1";
+  MODE_KEY = "eqlfilter.mode.v1";
+
+  componentDidMount() {
+    this.setState({ saved: this.loadSaved() });
+    try {
+      const m = localStorage.getItem(this.MODE_KEY);
+      if (m === "dark" || m === "light") this.setState({ mode: m });
+    } catch (e) {}
+    // Load the generated item database; falls back to the inline catalog on failure.
+    fetch("./eql-items.json")
+      .then(r => (r.ok ? r.json() : null))
+      .then(list => { if (list) this.setCatalog(list); })
+      .catch(() => {});
+
+    // Priority: shared link > saved draft > defaults.
+    let restored = false;
+    try {
+      const m = (window.location.hash || "").match(/[#&]f=([^&]+)/);
+      if (m) {
+        const json = decodeURIComponent(escape(atob(decodeURIComponent(m[1]))));
+        const d = JSON.parse(json);
+        this.setState({
+          name: d.n || "My Loot Filter",
+          currentId: null,
+          rules: (d.r || []).map(x => ({ name: x.n, action: this.actionKeys.includes(x.a) ? x.a : "Loot" }))
+        });
+        restored = true;
+      }
+    } catch (e) {}
+    if (!restored) {
+      try {
+        const d = JSON.parse(localStorage.getItem(this.DRAFT_KEY) || "null");
+        if (d && Array.isArray(d.rules)) {
+          this.setState({
+            name: d.name || "My Loot Filter",
+            currentId: d.currentId || null,
+            rules: d.rules.map(x => ({ name: x.name, action: this.actionKeys.includes(x.action) ? x.action : "Loot" }))
+          });
+        }
+      } catch (e) {}
+    }
+
+    // Close the saved-filters menu on outside click / Escape.
+    this._onDocDown = (ev) => {
+      if (this.state.menuOpen && !(ev.target.closest && ev.target.closest("[data-filter-menu]"))) {
+        this.setState({ menuOpen: false });
+      }
+    };
+    this._onKey = (ev) => { if (ev.key === "Escape" && this.state.menuOpen) this.setState({ menuOpen: false }); };
+    document.addEventListener("mousedown", this._onDocDown);
+    document.addEventListener("keydown", this._onKey);
+    this._draftReady = true;
+  }
+
+  // Auto-persist the working draft so a refresh doesn't lose unsaved work.
+  persistDraft() {
+    if (!this._draftReady) return; // don't overwrite before mount restore runs
+    try {
+      const payload = JSON.stringify({ name: this.state.name, currentId: this.state.currentId, rules: this.state.rules });
+      if (payload !== this._lastDraft) {
+        this._lastDraft = payload;
+        localStorage.setItem(this.DRAFT_KEY, payload);
+      }
+    } catch (e) {}
+  }
+
+  componentWillUnmount() {
+    document.removeEventListener("mousedown", this._onDocDown);
+    document.removeEventListener("keydown", this._onKey);
+  }
+
+  onSearchKey(e) {
+    if (e.key !== "Enter") return;
+    const q = this.state.query.trim();
+    if (!q) return;
+    // Prefer an exact catalog match, else the first visible result, else add as custom.
+    const exact = this.catalog.find(c => c.name.toLowerCase() === q.toLowerCase());
+    const first = this.catalog.find(c => this.matchesFilter(c) && !this.state.rules.some(r => r.name.toLowerCase() === c.name.toLowerCase()));
+    this.addItem((exact || first || { name: q }).name);
+  }
+
+  themes() {
+    return {
+      "Command Deck": { bg:"#15171b", panel:"#1d2026", panel2:"#252932", border:"#343a44", text:"#e8e4da", muted:"#9b968c", accent:"#c9a45a", accentText:"#15171b", danger:"#d9694a", radius:"8px", fd:"'Cinzel', serif", fu:"'IBM Plex Sans', sans-serif", fm:"'IBM Plex Mono', monospace", aLoot:"#4fae6b", aMerge:"#a472cf", aStore:"#5b8dd9", aSell:"#d6a94a" },
+      "Parchment": { bg:"#e3d7bd", panel:"#f1e8d4", panel2:"#e8ddc3", border:"#cabf9d", text:"#2f2920", muted:"#7a6e54", accent:"#7c5a2c", accentText:"#f1e8d4", danger:"#9c3f2b", radius:"6px", fd:"'Cinzel', serif", fu:"'IBM Plex Sans', sans-serif", fm:"'IBM Plex Mono', monospace", aLoot:"#3f7d4f", aMerge:"#7a4f9c", aStore:"#3f5f9c", aSell:"#9c6f2b" },
+      "Terminal": { bg:"#0b0e0c", panel:"#11150f", panel2:"#161b14", border:"#27322a", text:"#cfe8d6", muted:"#6f8a78", accent:"#5fd08a", accentText:"#0b0e0c", danger:"#e87a6f", radius:"2px", fd:"'IBM Plex Mono', monospace", fu:"'IBM Plex Mono', monospace", fm:"'IBM Plex Mono', monospace", aLoot:"#5fd08a", aMerge:"#c08adf", aStore:"#6fb0e8", aSell:"#e8c46f" }
+    };
+  }
+
+  typeColor(t) {
+    return { Weapon:"#c2603f", Armor:"#5b8dd9", Jewelry:"#a472cf", Tradeskill:"#c9a45a", Container:"#4f9e8f", Misc:"#8a8f98", Custom:"#7f8896" }[t] || "#7f8896";
+  }
+  glyph(n) { return (n || "?").trim().charAt(0).toUpperCase(); }
+  findCat(n) { return this.catalog.find(c => c.name.toLowerCase() === (n || "").toLowerCase()); }
+
+  matchesFilter(c) {
+    const q = this.state.query.trim().toLowerCase();
+    return (this.state.cat === "All" || c.type === this.state.cat) &&
+           (this.state.zone === "All" || c.zone === this.state.zone) &&
+           (!q || c.name.toLowerCase().indexOf(q) >= 0);
+  }
+
+  addItem(n) {
+    if (this.state.rules.some(r => r.name.toLowerCase() === n.toLowerCase())) return;
+    this.setState(s => ({ rules: [...s.rules, { name: n, action: s.addAction }] }));
+  }
+  removeItem(n) { this.setState(s => ({ rules: s.rules.filter(r => r.name !== n) })); }
+  setAction(n, a) { this.setState(s => ({ rules: s.rules.map(r => r.name === n ? { name: r.name, action: a } : r) })); }
+  clearAll() { this.setState({ rules: [] }); }
+
+  addAllAs(action) {
+    const matches = this.catalog.filter(c => this.matchesFilter(c));
+    this.setState(s => {
+      const map = new Map(s.rules.map(r => [r.name.toLowerCase(), { name: r.name, action: r.action }]));
+      matches.forEach(c => { map.set(c.name.toLowerCase(), { name: c.name, action }); });
+      return { rules: Array.from(map.values()) };
+    });
+  }
+
+  buildIni() {
+    const s = this.state;
+    let o = "; EverQuest Legends Loot Filter\n; Created with EQLFilter — eqlfilter.com\n; NOTE: placeholder format — will be matched to the game spec at beta\n\n[Filter]\nName=" + s.name + "\n\n[Rules]\n";
+    s.rules.forEach(r => { o += r.name + "=" + r.action + "\n"; });
+    return o;
+  }
+  parseIni(text) {
+    const lines = (text || "").split(/\r?\n/);
+    let name = null, section = "";
+    const rules = [];
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line || line.charAt(0) === ";" || line.charAt(0) === "#") continue;
+      if (line.charAt(0) === "[") { section = line.replace(/[\[\]]/g, "").trim().toLowerCase(); continue; }
+      const eq = line.indexOf("=");
+      if (eq < 0) continue;
+      const k = line.slice(0, eq).trim(), v = line.slice(eq + 1).trim();
+      if (section === "filter") {
+        if (k.toLowerCase() === "name") name = v;
+      } else if (section === "rules") {
+        const action = this.actionKeys.find(a => a.toLowerCase() === v.toLowerCase()) || "Loot";
+        rules.push({ name: k, action });
+      }
+    }
+    return { name, rules };
+  }
+  doImport() {
+    const p = this.parseIni(this.state.importText);
+    this.setState(s => ({
+      name: p.name || s.name,
+      rules: p.rules.length ? p.rules : s.rules,
+      panel: "ini",
+      importText: ""
+    }));
+  }
+  shareUrl() {
+    try {
+      const d = { n: this.state.name, r: this.state.rules.map(r => ({ n: r.name, a: r.action })) };
+      const b = btoa(unescape(encodeURIComponent(JSON.stringify(d))));
+      const base = (window.location.href || "").split("#")[0];
+      return base + "#f=" + encodeURIComponent(b);
+    } catch (e) { return ""; }
+  }
+  downloadIni() {
+    const safe = (this.state.name || "loot-filter").trim().replace(/[^a-z0-9_-]+/gi, "_").replace(/^_+|_+$/g, "") || "loot-filter";
+    const blob = new Blob([this.buildIni()], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = safe + ".ini";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  copy(text, key) {
+    try { navigator.clipboard.writeText(text); } catch (e) {}
+    this.setState({ copied: key });
+    clearTimeout(this._ct);
+    this._ct = setTimeout(() => this.setState({ copied: "" }), 1600);
+  }
+
+  renderVals() {
+    this.persistDraft();
+    const T = this.themes();
+    const mode = this.currentMode();
+    // Terminal stays available via the skin prop; the in-app toggle picks dark/light.
+    const skinName = (this.props.skin === "Terminal" && !this.state.mode) ? "Terminal" : (mode === "light" ? "Parchment" : "Command Deck");
+    const th = T[skinName] || T["Command Deck"];
+    const rowpad = (this.props.density === "Compact") ? "7px 18px" : "12px 18px";
+    const rootStyle =
+      "--bg:" + th.bg + ";--panel:" + th.panel + ";--panel2:" + th.panel2 + ";--border:" + th.border +
+      ";--text:" + th.text + ";--muted:" + th.muted + ";--accent:" + th.accent + ";--accentText:" + th.accentText +
+      ";--danger:" + th.danger + ";--radius:" + th.radius + ";--rowpad:" + rowpad +
+      ";--font-display:" + th.fd + ";--font-ui:" + th.fu + ";--font-mono:" + th.fm +
+      ";height:100vh;display:flex;flex-direction:column;overflow:hidden;background:" + th.bg + ";color:" + th.text + ";font-family:" + th.fu + ";";
+
+    const dot = (c) => "flex:none;width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:" + th.fm + ";font-weight:600;font-size:13px;color:#fff;background:" + c + ";box-shadow:inset 0 0 0 1px rgba(255,255,255,0.12);";
+
+    const taken = new Set(this.state.rules.map(r => r.name.toLowerCase()));
+    const matching = this.catalog.filter(c => this.matchesFilter(c));
+    const filtered = matching.filter(c => !taken.has(c.name.toLowerCase()));
+    const subOf = (c) => [c.zone, c.slot].concat(c.flags || []).filter(Boolean).join(" · ");
+    const searchResults = filtered.slice(0, 200).map(c => ({
+      id: c.id, name: c.name, glyph: this.glyph(c.name), sub: subOf(c),
+      dotStyle: dot(this.typeColor(c.type)), add: () => this.addItem(c.name)
+    }));
+    const q = this.state.query.trim().toLowerCase();
+    const canAddCustom = q.length > 0 &&
+      !this.catalog.some(c => c.name.toLowerCase() === q) &&
+      !taken.has(q);
+
+    const actionColors = { Loot: th.aLoot, Merge: th.aMerge, Store: th.aStore, Sell: th.aSell };
+    const actBtn = (color, active) => active
+      ? "font-family:" + th.fu + ";font-size:11.5px;font-weight:600;letter-spacing:0.02em;padding:7px 0;border-radius:6px;cursor:pointer;border:1px solid " + color + ";background:" + color + ";color:#fff;text-shadow:0 1px 1px rgba(0,0,0,0.25);"
+      : "font-family:" + th.fu + ";font-size:11.5px;font-weight:500;letter-spacing:0.02em;padding:7px 0;border-radius:6px;cursor:pointer;border:1px solid " + th.border + ";background:transparent;color:" + th.muted + ";";
+
+    const rf = this.state.ruleFilter;
+    const visibleRules = this.state.rules.filter(r => rf === "All" || r.action === rf);
+    const rows = visibleRules.map(r => {
+      const cat = this.findCat(r.name);
+      const type = cat ? cat.type : "Custom";
+      return {
+        name: r.name, glyph: this.glyph(r.name),
+        sub: cat ? subOf(cat) : "Custom item",
+        dotStyle: dot(this.typeColor(type)),
+        actions: this.actionKeys.map(k => ({
+          key: k, label: k, style: actBtn(actionColors[k], r.action === k),
+          onClick: () => this.setAction(r.name, k)
+        })),
+        remove: () => this.removeItem(r.name)
+      };
+    });
+
+    const counts = { Loot: 0, Merge: 0, Store: 0, Sell: 0 };
+    this.state.rules.forEach(r => { counts[r.action] = (counts[r.action] || 0) + 1; });
+    const chipStyle = (active) => "display:inline-flex;align-items:center;gap:6px;font-family:" + th.fu + ";font-size:11.5px;cursor:pointer;color:" + th.text + ";background:" + (active ? th.panel2 : "transparent") + ";border:1px solid " + (active ? th.accent : th.border) + ";border-radius:20px;padding:3px 10px;";
+    const toggleRuleFilter = (k) => this.setState(s => ({ ruleFilter: s.ruleFilter === k ? "All" : k }));
+    const summary = this.actionKeys.map(k => ({
+      key: k, label: k, count: counts[k], color: actionColors[k],
+      style: chipStyle(this.state.ruleFilter === k),
+      onClick: () => toggleRuleFilter(k)
+    }));
+    const totalStyle = "font-family:" + th.fu + ";font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:20px;border:1px solid " + th.border + ";color:" + th.muted + ";background:transparent;";
+
+    const cats = ["All", "Weapon", "Armor", "Jewelry", "Tradeskill", "Container", "Misc"];
+    const catBtn = (active) => active
+      ? "font-family:" + th.fu + ";font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:20px;cursor:pointer;border:1px solid " + th.accent + ";background:" + th.accent + ";color:" + th.accentText + ";"
+      : "font-family:" + th.fu + ";font-size:11.5px;font-weight:500;padding:5px 11px;border-radius:20px;cursor:pointer;border:1px solid " + th.border + ";background:transparent;color:" + th.muted + ";";
+    const categories = cats.map(c => ({ key: c, style: catBtn(this.state.cat === c), onClick: () => this.setState({ cat: c }) }));
+
+    const zones = Array.from(new Set(this.catalog.map(c => c.zone))).filter(Boolean).sort();
+    const zoneOptions = [{ value: "All", label: "All Zones" }].concat(zones.map(z => ({ value: z, label: z })));
+
+    const bulkBtn = (color) => "font-family:" + th.fu + ";font-size:11px;font-weight:600;flex:1;padding:5px 0;border-radius:6px;cursor:pointer;border:1px solid " + color + ";background:transparent;color:" + color + ";";
+    const bulkActions = this.actionKeys.map(k => ({ key: k, label: k, style: bulkBtn(actionColors[k]), onClick: () => this.addAllAs(k) }));
+
+    const addAsBtn = (color, active) => active
+      ? "font-family:" + th.fu + ";font-size:11px;font-weight:600;flex:1;padding:5px 0;border-radius:6px;cursor:pointer;border:1px solid " + color + ";background:" + color + ";color:#fff;text-shadow:0 1px 1px rgba(0,0,0,0.25);"
+      : "font-family:" + th.fu + ";font-size:11px;font-weight:500;flex:1;padding:5px 0;border-radius:6px;cursor:pointer;border:1px solid " + th.border + ";background:transparent;color:" + th.muted + ";";
+    const addAsActions = this.actionKeys.map(k => ({ key: k, label: k, style: addAsBtn(actionColors[k], this.state.addAction === k), onClick: () => this.setState({ addAction: k }) }));
+
+    const tabDefs = [["ini", "INI Export"], ["import", "Import"], ["share", "Share Link"]];
+    const tabBtn = (active) => "font-family:" + th.fu + ";font-size:13px;font-weight:" + (active ? "600" : "500") + ";padding:13px 18px;cursor:pointer;background:transparent;border:none;border-bottom:2px solid " + (active ? th.accent : "transparent") + ";color:" + (active ? th.text : th.muted) + ";";
+    const tabs = tabDefs.map(t => ({ key: t[0], label: t[1], style: tabBtn(this.state.panel === t[0]), onClick: () => this.setState({ panel: t[0] }) }));
+
+    // Saved-filters menu
+    const fmtAgo = (ts) => {
+      const d = Math.max(0, Date.now() - ts), m = 60000, h = 3600000, day = 86400000;
+      if (d < m) return "just now";
+      if (d < h) return Math.floor(d / m) + "m ago";
+      if (d < day) return Math.floor(d / h) + "h ago";
+      return Math.floor(d / day) + "d ago";
+    };
+    const cur = this.state.currentId ? this.state.saved.find(f => f.id === this.state.currentId) : null;
+    const sameRules = (a, b) => a.length === b.length && a.every((r, i) => b[i] && b[i].name === r.name && b[i].action === r.action);
+    const dirty = !cur || cur.name !== this.state.name || !sameRules(this.state.rules, cur.rules);
+    const rowBase = "display:flex; align-items:center; gap:8px; padding:8px 9px; border-radius:7px; margin-bottom:2px;";
+    const savedList = this.state.saved.map(f => ({
+      id: f.id, name: f.name,
+      meta: (f.rules ? f.rules.length : 0) + " items · " + fmtAgo(f.updated),
+      isCurrent: f.id === this.state.currentId,
+      rowStyle: rowBase + (f.id === this.state.currentId ? "background:" + th.panel2 + ";" : ""),
+      load: () => this.loadFilter(f.id),
+      remove: () => this.deleteFilter(f.id)
+    }));
+
+    return {
+      menuOpen: this.state.menuOpen,
+      toggleMenu: () => this.toggleMenu(),
+      savedCount: this.state.saved.length,
+      savedList,
+      noSaved: this.state.saved.length === 0,
+      saveCurrent: () => this.saveCurrent(),
+      saveLabel: cur ? (dirty ? "Save changes" : "Saved ✓") : "Save filter",
+      newFilter: () => this.newFilter(),
+      rootStyle,
+      name: this.state.name,
+      query: this.state.query,
+      zone: this.state.zone,
+      setName: (e) => this.setState({ name: e.target.value }),
+      setQuery: (e) => this.setState({ query: e.target.value }),
+      onSearchKey: (e) => this.onSearchKey(e),
+      setZone: (e) => this.setState({ zone: e.target.value }),
+      clearAll: () => this.clearAll(),
+      categories,
+      zoneOptions,
+      filterMatchCount: matching.length,
+      bulkActions,
+      addAsActions,
+      addAction: this.state.addAction,
+      addBadgeStyle: "flex:none;font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:" + actionColors[this.state.addAction] + ";border:1px solid " + actionColors[this.state.addAction] + ";border-radius:5px;padding:3px 7px;opacity:0.95;",
+      searchResults,
+      resultCount: filtered.length,
+      noResults: searchResults.length === 0 && !canAddCustom,
+      canAddCustom,
+      addCustom: () => this.addItem(this.state.query.trim()),
+      rows,
+      isEmpty: this.state.rules.length === 0,
+      filteredEmpty: this.state.rules.length > 0 && rows.length === 0,
+      clearRuleFilter: () => this.setState({ ruleFilter: "All" }),
+      ruleFilterLabel: rf,
+      summary,
+      total: this.state.rules.length,
+      totalStyle,
+      tabs,
+      showIni: this.state.panel === "ini",
+      showImport: this.state.panel === "import",
+      showShare: this.state.panel === "share",
+      iniText: this.buildIni(),
+      importText: this.state.importText,
+      setImport: (e) => this.setState({ importText: e.target.value }),
+      doImport: () => this.doImport(),
+      toggleMode: () => this.toggleMode(),
+      modeIcon: mode === "light" ? "☾" : "☀",
+      modeTitle: mode === "light" ? "Switch to dark mode" : "Switch to light mode",
+      year: new Date().getFullYear(),
+      projects: [
+        { label: "EQNTA", title: "Norrath Transit Authority", href: "https://eqnta.com" }
+      ],
+      copyIni: () => this.copy(this.buildIni(), "ini"),
+      downloadIni: () => this.downloadIni(),
+      ioHeightPx: (this.state.ioMax ? 560 : this.state.ioHeight) + "px",
+      startResize: (e) => this.startResize(e),
+      toggleIoMax: () => this.toggleIoMax(),
+      ioMaxIcon: this.state.ioMax ? "⤓" : "⤢",
+      ioMaxLabel: this.state.ioMax ? "Collapse" : "Expand",
+      ioMaxTitle: this.state.ioMax ? "Collapse panel" : "Expand panel",
+      copyIniLabel: this.state.copied === "ini" ? "Copied!" : "Copy INI",
+      shareUrl: this.shareUrl(),
+      copyShare: () => this.copy(this.shareUrl(), "share"),
+      copyShareLabel: this.state.copied === "share" ? "Copied!" : "Copy link"
+    };
+  }
+}
+</script>
+</body>
+</html>
