@@ -28,6 +28,7 @@ function norm(it) {
     zones: Array.isArray(it.zones) ? it.zones.filter(Boolean) : (it.zone ? [it.zone] : []),
     flags: Array.isArray(it.flags) ? it.flags : [],
     icon: it.icon || 0,
+    subtype: it.subtype || '',
   }
 }
 
@@ -50,6 +51,7 @@ for (const src of SOURCES) {
       zones: it.zones.length ? it.zones : prev.zones,
       flags: it.flags.length ? it.flags : prev.flags,
       icon: it.icon || prev.icon,
+      subtype: it.subtype || prev.subtype,
     })
     overrode++
   }

@@ -74,6 +74,9 @@ for (const r of rows) {
   const flags = FLAG_COLS.filter(([c]) => r[ci[c]] === '1').map(([, label]) => label)
   // EQ item icons live in dragitem*.dds sheets; ids start at 500. 0/blank = no icon.
   const icon = parseInt(r[ci.icon], 10) >= 500 ? parseInt(r[ci.icon], 10) : 0
+  // subtype drives the in-app subcategory chips: weapon class for weapons (the
+  // equip slot lives in `slot`), empty otherwise (Armor/Jewelry subcat by slot).
+  const subtype = WEAPON.has(itemType) ? itemType : ''
 
   const key = name.toLowerCase()
   const prev = byName.get(key)
@@ -81,8 +84,9 @@ for (const r of rows) {
     for (const z of zones) if (!prev.zones.includes(z)) prev.zones.push(z)
     for (const f of flags) if (!prev.flags.includes(f)) prev.flags.push(f)
     if (!prev.icon && icon) prev.icon = icon
+    if (!prev.subtype && subtype) prev.subtype = subtype
   } else {
-    byName.set(key, { name, type, slot, zones, flags, icon })
+    byName.set(key, { name, type, slot, zones, flags, icon, subtype })
   }
 }
 
