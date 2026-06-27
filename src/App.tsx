@@ -22,8 +22,16 @@ function css(s: string): React.CSSProperties {
 }
 
 // UTF-8-safe base64 for share links. (Replaces the old escape()/unescape() trick —
-// those are deprecated globals.) Filter payloads are tiny, so the spread is fine.
-function b64encode(s: string) { return btoa(String.fromCharCode(...new TextEncoder().encode(s))) }
+// those are deprecated globals.) Build the binary string in a loop, not via
+// String.fromCharCode(...spread) — spreading a big array (e.g. an "apply to all"
+// filter, hundreds of KB) overflows the call stack and the share link silently
+// comes back empty. ponytail: char-by-char concat, fine for a one-shot encode.
+function b64encode(s: string) {
+  const bytes = new TextEncoder().encode(s)
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+  return btoa(bin)
+}
 function b64decode(b: string) { return new TextDecoder().decode(Uint8Array.from(atob(b), c => c.charCodeAt(0))) }
 
 // Arrow-key navigation for a radiogroup: move selection AND focus to the
@@ -81,7 +89,13 @@ class VList extends Component<{
 }
 
 type Rule = { name: string; action: string }
-type Item = { id: string; name: string; type: string; slot: string; zones: string[]; flags: string[]; icon?: number }
+type Item = { id: string; name: string; type: string; slot: string; zones: string[]; flags: string[]; icon?: number; subtype?: string }
+
+// Canonical equip slots. Multi-slot items list several ("Neck Wrist Waist"); we
+// split on these so each counts under its real slots instead of forming a junk
+// combo chip. Also used to drop slotted items from the Misc "kind" subcategories.
+const EQUIP_SLOTS = new Set(['Chest', 'Head', 'Wrist', 'Neck', 'Hands', 'Feet', 'Legs', 'Arms', 'Face', 'Waist', 'Shoulders', 'Back', 'Finger', 'Ear', 'Primary', 'Secondary', 'Range'])
+const SLOT_ALIAS: Record<string, string> = { Fingers: 'Finger', Shield: 'Secondary' }
 type Saved = { id: string; name: string; rules: Rule[]; updated: number }
 
 type Props = { skin?: string; density?: string }
@@ -89,6 +103,7 @@ type State = {
   name: string
   query: string
   cat: string
+  sub: string
   zone: string
   rules: Rule[]
   panel: 'ini' | 'import' | 'share'
@@ -98,6 +113,7 @@ type State = {
   addAction: string
   ioHeight: number
   ioMax: boolean
+  ioCollapsed: boolean   // export/import/share body hidden, tab bar kept as a thin strip
   mode: 'dark' | 'light' | null
   saved: Saved[]
   currentId: string | null
@@ -108,6 +124,8 @@ type State = {
   fType: string
   fZone: string
   fSlot: string
+  narrow: boolean                            // viewport too small for side-by-side
+  mobileTab: 'library' | 'filter' | 'export' // which pane shows when narrow
 }
 
 export default class App extends Component<Props, State> {
@@ -121,6 +139,9 @@ export default class App extends Component<Props, State> {
   _ct: ReturnType<typeof setTimeout> | undefined
   _onDocDown!: (e: MouseEvent) => void
   _onKey!: (e: KeyboardEvent) => void
+  _mq?: MediaQueryList
+  _onMq!: (e: MediaQueryListEvent) => void
+  static MOBILE_Q = '(max-width: 900px)'
 
   constructor(props: Props) {
     super(props)
@@ -177,6 +198,9 @@ export default class App extends Component<Props, State> {
     name: 'My Loot Filter',
     query: '',
     cat: 'All',
+    sub: 'All',
+    narrow: typeof window !== 'undefined' && window.matchMedia(App.MOBILE_Q).matches,
+    mobileTab: 'library',
     zone: 'All',
     rules: [
       { name: 'Rusty Battle Axe', action: 'Loot' },
@@ -191,6 +215,7 @@ export default class App extends Component<Props, State> {
     addAction: 'Loot',
     ioHeight: 140,
     ioMax: false,
+    ioCollapsed: false,
     mode: null,
     saved: [],
     currentId: null,
@@ -212,6 +237,7 @@ export default class App extends Component<Props, State> {
       zones: Array.isArray(c.zones) ? c.zones : (c.zone ? [c.zone] : []),
       flags: Array.isArray(c.flags) ? c.flags : [],
       icon: c.icon || 0,
+      subtype: c.subtype || '',
     }))
     this.forceUpdate()
   }
@@ -313,6 +339,61 @@ export default class App extends Component<Props, State> {
       return { saved, currentId: s.currentId === id ? null : s.currentId }
     })
   }
+
+  // Backup = the two localStorage-only stores (saved filters + custom library
+  // items) in one JSON file, so they survive a browser switch / clear. Reuses
+  // the INI download + import file-input plumbing.
+  exportBackup() {
+    const data = JSON.stringify({ v: 1, saved: this.state.saved, customItems: this.state.customItems }, null, 2)
+    const blob = new Blob([data], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = 'eqlfilter-backup.json'
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+  // Merge, never replace — importing on a new browser must not wipe whatever's
+  // already there. Saved filters merge by id (newer `updated` wins); custom
+  // items merge by name (existing wins).
+  importBackup(text: string) {
+    let data: any
+    try { data = JSON.parse(text) } catch (e) { alert('That file isn\'t a valid EQLFilter backup.'); return }
+    const inSaved: any[] = Array.isArray(data?.saved) ? data.saved : []
+    const inItems: any[] = Array.isArray(data?.customItems) ? data.customItems : []
+    if (!inSaved.length && !inItems.length) { alert('No filters or custom items found in that file.'); return }
+
+    const byId = new Map(this.state.saved.map(f => [f.id, f]))
+    let added = 0, updated = 0
+    for (const f of inSaved) {
+      if (!f || !f.id || !Array.isArray(f.rules)) continue
+      const cur = byId.get(f.id)
+      if (!cur) { byId.set(f.id, f); added++ }
+      else if ((f.updated || 0) > (cur.updated || 0)) { byId.set(f.id, f); updated++ }
+    }
+    const saved = [...byId.values()].sort((a, b) => (b.updated || 0) - (a.updated || 0))
+
+    const seen = new Set(this.state.customItems.map(c => c.name.toLowerCase()))
+    const customItems = this.state.customItems.slice()
+    let addedItems = 0
+    inItems.forEach((c, i) => {
+      if (!c || !c.name || seen.has(c.name.toLowerCase())) return
+      seen.add(c.name.toLowerCase())
+      customItems.push({
+        id: c.id || ('c' + Date.now().toString(36) + i), name: c.name,
+        type: c.type || 'Misc', slot: c.slot || '',
+        zones: Array.isArray(c.zones) ? c.zones : (c.zone ? [c.zone] : []),
+        flags: Array.isArray(c.flags) ? c.flags : [],
+      })
+      addedItems++
+    })
+
+    this.persist(saved); this.persistItems(customItems)
+    this.setState({ saved, customItems })
+    const parts = [`${added} new filter${added === 1 ? '' : 's'}`]
+    if (updated) parts.push(`updated ${updated}`)
+    if (addedItems) parts.push(`${addedItems} custom item${addedItems === 1 ? '' : 's'}`)
+    alert('Imported ' + parts.join(', ') + '.')
+  }
   // True when the current filter has edits not matching the saved copy (or isn't saved).
   isDirty() {
     const cur = this.state.currentId ? this.state.saved.find(f => f.id === this.state.currentId) : null
@@ -350,6 +431,7 @@ export default class App extends Component<Props, State> {
     document.addEventListener('mouseup', onUp)
   }
   toggleIoMax() { this.setState(s => ({ ioMax: !s.ioMax })) }
+  toggleIoCollapsed() { this.setState(s => ({ ioCollapsed: !s.ioCollapsed })) }
 
   currentMode(): 'dark' | 'light' {
     if (this.state.mode) return this.state.mode
@@ -414,6 +496,10 @@ export default class App extends Component<Props, State> {
     this._onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape' && this.state.menuOpen) this.setState({ menuOpen: false }) }
     document.addEventListener('mousedown', this._onDocDown)
     document.addEventListener('keydown', this._onKey)
+    this._mq = window.matchMedia(App.MOBILE_Q)
+    this._onMq = e => this.setState({ narrow: e.matches })
+    this._mq.addEventListener('change', this._onMq)
+    this.setState({ narrow: this._mq.matches })
     this._draftReady = true
   }
 
@@ -431,6 +517,7 @@ export default class App extends Component<Props, State> {
   componentWillUnmount() {
     document.removeEventListener('mousedown', this._onDocDown)
     document.removeEventListener('keydown', this._onKey)
+    this._mq?.removeEventListener('change', this._onMq)
   }
 
   onSearchKey(e: React.KeyboardEvent) {
@@ -457,9 +544,35 @@ export default class App extends Component<Props, State> {
   glyph(n: string) { return (n || '?').trim().charAt(0).toUpperCase() }
   findCat(n: string) { return this.index().byName.get((n || '').toLowerCase()) }
 
+  // The subcategory bucket for an item: weapon class for weapons, equip slot for
+  // armor/jewelry, none for everything else (no subcategory chips shown there).
+  // Subcategory buckets an item belongs to (an item can sit in several slots).
+  subKeys(c: Item): string[] {
+    if (c.type === 'Weapon') return c.subtype ? [c.subtype] : []
+    // Armor/Jewelry: one entry per canonical equip slot the item occupies.
+    if (c.type === 'Armor' || c.type === 'Jewelry') {
+      const out = new Set<string>()
+      for (let t of (c.slot || '').split(/[,\s]+/).filter(Boolean)) {
+        t = SLOT_ALIAS[t] || t
+        if (EQUIP_SLOTS.has(t)) out.add(t)
+      }
+      return [...out]
+    }
+    // Misc: by item kind (Potion, Key, Book, Spell Scroll…), which the importer
+    // parks in `slot`. Skip slotted items that fell into Misc — their `slot` is
+    // an equip-slot list, not a kind.
+    if (c.type === 'Misc') {
+      const s = c.slot || ''
+      if (!s || s.includes(',') || s.split(' ').every(t => EQUIP_SLOTS.has(t))) return []
+      return [s]
+    }
+    return []
+  }
+
   matchesFilter(c: Item) {
     const q = this.state.query.trim().toLowerCase()
     return (this.state.cat === 'All' || c.type === this.state.cat) &&
+      (this.state.sub === 'All' || this.subKeys(c).includes(this.state.sub)) &&
       (this.state.zone === 'All' || c.zones.includes(this.state.zone)) &&
       (!q || c.name.toLowerCase().indexOf(q) >= 0)
   }
@@ -498,6 +611,7 @@ export default class App extends Component<Props, State> {
       const eq = line.indexOf('=')
       if (eq < 0) continue
       const k = line.slice(0, eq).trim(), v = line.slice(eq + 1).trim()
+      if (!k) continue // skip blank-named rules (e.g. a stray "=Loot" line)
       if (section === 'filter') {
         if (k.toLowerCase() === 'name') name = v
       } else if (section === 'rules') {
@@ -559,7 +673,7 @@ export default class App extends Component<Props, State> {
       ';--text:' + th.text + ';--muted:' + th.muted + ';--accent:' + th.accent + ';--accentText:' + th.accentText +
       ';--danger:' + th.danger + ';--radius:' + th.radius + ';--rowpad:' + rowpad +
       ';--font-display:' + th.fd + ';--font-ui:' + th.fu + ';--font-mono:' + th.fm +
-      ';height:100vh;display:flex;flex-direction:column;overflow:hidden;background:' + th.bg + ';color:' + th.text + ';font-family:' + th.fu + ';'
+      ';height:100dvh;display:flex;flex-direction:column;overflow:hidden;background:' + th.bg + ';color:' + th.text + ';font-family:' + th.fu + ';'
 
     const dot = (c: string) => 'flex:none;width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:' + th.fm + ';font-weight:600;font-size:13px;color:#fff;background:' + c + ';box-shadow:inset 0 0 0 1px rgba(255,255,255,0.12);'
 
@@ -606,11 +720,25 @@ export default class App extends Component<Props, State> {
     }))
     const totalStyle = 'font-family:' + th.fu + ';font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:20px;border:1px solid ' + th.border + ';color:' + th.muted + ';background:transparent;'
 
-    const cats = ['All', 'Weapon', 'Armor', 'Jewelry', 'Tradeskill', 'Container', 'Misc']
+    const cats = ['All', 'Weapon', 'Armor', 'Jewelry', 'Tradeskill', 'Misc']
     const catBtn = (active: boolean) => active
       ? 'font-family:' + th.fu + ';font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:20px;cursor:pointer;border:1px solid ' + th.accent + ';background:' + th.accent + ';color:' + th.accentText + ';'
       : 'font-family:' + th.fu + ';font-size:11.5px;font-weight:500;padding:5px 11px;border-radius:20px;cursor:pointer;border:1px solid ' + th.border + ';background:transparent;color:' + th.muted + ';'
-    const categories = cats.map(c => ({ key: c, active: this.state.cat === c, style: catBtn(this.state.cat === c), onClick: () => this.setState({ cat: c }) }))
+    const categories = cats.map(c => ({ key: c, active: this.state.cat === c, style: catBtn(this.state.cat === c), onClick: () => this.setState({ cat: c, sub: 'All' }) }))
+
+    // Subcategory chips for the selected category (weapon class / equip slot),
+    // ordered by how many items fall in each. Only shown when there are ≥2.
+    const subCounts = new Map<string, number>()
+    if (this.state.cat !== 'All') for (const c of items) {
+      if (c.type !== this.state.cat) continue
+      for (const s of this.subKeys(c)) subCounts.set(s, (subCounts.get(s) || 0) + 1)
+    }
+    // Show every subcategory — the most any category produces is ~17 (armor
+    // slots), which wraps to a couple of rows. Not worth a show-more/less toggle.
+    const subList = subCounts.size >= 2
+      ? ['All', ...[...subCounts.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0])]
+      : []
+    const subcats = subList.map(s => ({ key: s, active: this.state.sub === s, style: catBtn(this.state.sub === s), onClick: () => this.setState({ sub: s }) }))
 
     const zoneOptions = [{ value: 'All', label: 'All Zones' }].concat(zones.map(z => ({ value: z, label: z })))
 
@@ -622,9 +750,10 @@ export default class App extends Component<Props, State> {
       : 'font-family:' + th.fu + ';font-size:11px;font-weight:500;flex:1;padding:5px 0;border-radius:6px;cursor:pointer;border:1px solid ' + th.border + ';background:transparent;color:' + th.muted + ';'
     const addAsActions = this.actionKeys.map(k => ({ key: k, label: k, active: this.state.addAction === k, style: addAsBtn(actionColors[k], this.state.addAction === k), onClick: () => this.setState({ addAction: k }) }))
 
-    const tabDefs: [State['panel'], string][] = [['ini', 'INI Export'], ['import', 'Import'], ['share', 'Share Link']]
+    const tabDefs: [State['panel'], string][] = [['ini', 'Export'], ['import', 'Import'], ['share', 'Share Link']]
     const tabBtn = (active: boolean) => 'font-family:' + th.fu + ';font-size:13px;font-weight:' + (active ? '600' : '500') + ';padding:13px 18px;cursor:pointer;background:transparent;border:none;border-bottom:2px solid ' + (active ? th.accent : 'transparent') + ';color:' + (active ? th.text : th.muted) + ';'
-    const tabs = tabDefs.map(t => ({ key: t[0], label: t[1], style: tabBtn(this.state.panel === t[0]), onClick: () => this.setState({ panel: t[0] }) }))
+    // Clicking a tab also reopens the body if it was collapsed.
+    const tabs = tabDefs.map(t => ({ key: t[0], label: t[1], style: tabBtn(this.state.panel === t[0]), onClick: () => this.setState({ panel: t[0], ioCollapsed: false }) }))
 
     const fmtAgo = (ts: number) => {
       const d = Math.max(0, Date.now() - ts), m = 60000, h = 3600000, day = 86400000
@@ -635,6 +764,7 @@ export default class App extends Component<Props, State> {
     }
     const cur = this.state.currentId ? this.state.saved.find(f => f.id === this.state.currentId) : null
     const dirty = this.isDirty()
+    const backupBtn = 'font-family:' + th.fu + '; font-size:11.5px; font-weight:600; color:' + th.muted + '; background:transparent; border:none; padding:0; cursor:pointer; text-decoration:underline; text-underline-offset:2px;'
     const rowBase = 'display:flex; align-items:center; gap:8px; padding:8px 9px; border-radius:7px; margin-bottom:2px;'
     const savedList = this.state.saved.map(f => ({
       id: f.id, name: f.name,
@@ -653,12 +783,26 @@ export default class App extends Component<Props, State> {
     const fieldStyle = 'font-family:' + th.fu + '; font-size:13px; color:' + th.text + '; background:' + th.panel2 + '; border:1px solid ' + th.border + '; border-radius:' + th.radius + '; padding:8px 11px;'
     const canAddLib = this.state.fName.trim().length > 0
 
+    // Responsive: below 900px the panes can't sit side-by-side, so we show one at
+    // a time behind a tab bar. On desktop all panes render as before.
+    const narrow = this.state.narrow
+    const tab = this.state.mobileTab
+    const showLib = !narrow || tab === 'library'
+    const showFilter = !narrow || tab === 'filter'
+    const showExport = !narrow || tab === 'export'
+    const effRowH = narrow ? 94 : rowH   // rule rows stack (item over actions) when narrow
+    const mobileTabs = [
+      { key: 'library', label: 'Library' },
+      { key: 'filter', label: 'Filter · ' + this.state.rules.length },
+      { key: 'export', label: 'Export' },
+    ] as const
+
     return (
       <div style={css(rootStyle)}>
         {/* Descriptive copy for crawlers / AI search — visually hidden, the UI speaks for itself. */}
         <p className="sr-only">EQLFilter is a free loot filter builder for EverQuest Legends (EQL). Search the in-game item catalog and assign Loot, Merge, Store, or Sell to each item, then export your filter as an INI file or a shareable link — no account, runs entirely in your browser.</p>
         {/* HEADER */}
-        <header style={css('display:flex; align-items:center; gap:18px; padding:14px 22px; border-bottom:1px solid ' + th.border + '; background:' + th.panel + '; flex:none;')}>
+        <header style={css('display:flex; align-items:center; gap:18px; padding:14px 22px; border-bottom:1px solid ' + th.border + '; background:' + th.panel + '; flex:none;' + (narrow ? 'flex-wrap:wrap; gap:9px 12px; padding:10px 14px;' : ''))}>
           <div style={css('display:flex; align-items:center; gap:12px;')}>
             <div style={css('width:30px; height:30px; transform:rotate(45deg); border:2px solid ' + th.accent + '; background:linear-gradient(135deg, ' + th.accent + ' 0%, transparent 60%); border-radius:5px;')}></div>
             <div style={css('display:flex; flex-direction:column; line-height:1;')}>
@@ -666,16 +810,16 @@ export default class App extends Component<Props, State> {
                 <h1 style={css('margin:0; font-family:' + th.fd + '; font-weight:700; font-size:20px; letter-spacing:0.06em; color:' + th.text + ';')}>EQL&nbsp;FILTER</h1>
                 <span title="Item data and INI format are still being finalized" style={css('font-family:' + th.fu + '; font-size:9px; font-weight:700; letter-spacing:0.14em; text-transform:uppercase; color:' + th.accent + '; border:1px solid ' + th.accent + '; border-radius:4px; padding:2px 6px; line-height:1;')}>Beta</span>
               </div>
-              <div style={css('font-family:' + th.fu + '; font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:' + th.muted + '; margin-top:4px;')}>EverQuest Legends · Loot Filter Builder</div>
+              <div style={css('font-family:' + th.fu + '; font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:' + th.muted + '; margin-top:4px;' + (narrow ? 'display:none;' : ''))}>EverQuest Legends · Loot Filter Builder</div>
             </div>
           </div>
 
-          <div style={css('flex:1;')}></div>
+          <div style={css('flex:1;' + (narrow ? 'display:none;' : ''))}></div>
 
-          <div data-filter-menu="1" style={css('position:relative; display:flex; align-items:center; gap:8px;')}>
+          <div data-filter-menu="1" style={css('position:relative; display:flex; align-items:center; gap:8px;' + (narrow ? 'flex:1 1 100%; order:3;' : ''))}>
             <span style={css('font-size:11px; text-transform:uppercase; letter-spacing:0.12em; color:' + th.muted + ';')}>Filter</span>
             <input className="eqi" value={this.state.name} onChange={e => this.setState({ name: e.target.value })} placeholder="Filter name"
-              style={css('font-family:' + th.fu + '; font-size:14px; font-weight:500; color:' + th.text + '; background:' + th.panel2 + '; border-top:1px solid ' + th.border + '; border-bottom:1px solid ' + th.border + '; border-left:1px solid ' + th.border + '; border-right:none; border-radius:' + th.radius + ' 0 0 ' + th.radius + '; padding:9px 13px; width:200px;')} />
+              style={css('font-family:' + th.fu + '; font-size:14px; font-weight:500; color:' + th.text + '; background:' + th.panel2 + '; border-top:1px solid ' + th.border + '; border-bottom:1px solid ' + th.border + '; border-left:1px solid ' + th.border + '; border-right:none; border-radius:' + th.radius + ' 0 0 ' + th.radius + '; padding:9px 13px; width:200px;' + (narrow ? 'flex:1; width:auto; min-width:0;' : ''))} />
             <button onClick={() => this.toggleMenu()} title="Saved filters"
               style={css('display:flex; align-items:center; gap:6px; font-family:' + th.fm + '; font-size:12px; color:' + th.muted + '; background:' + th.panel2 + '; border-top:1px solid ' + th.border + '; border-bottom:1px solid ' + th.border + '; border-right:1px solid ' + th.border + '; border-left:none; border-radius:0 ' + th.radius + ' ' + th.radius + ' 0; padding:9px 11px; cursor:pointer; height:38px; margin-left:-8px;')}>
               <span>{this.state.saved.length}</span>
@@ -709,6 +853,14 @@ export default class App extends Component<Props, State> {
                   <button onClick={() => this.saveCurrent()} style={css('flex:1; font-family:' + th.fu + '; font-size:12.5px; font-weight:600; color:' + th.accentText + '; background:' + th.accent + '; border:none; border-radius:6px; padding:8px 0; cursor:pointer;')}>{cur ? (dirty ? 'Save changes' : 'Saved ✓') : 'Save filter'}</button>
                   <button onClick={() => this.newFilter()} style={css('flex:1; font-family:' + th.fu + '; font-size:12.5px; font-weight:500; color:' + th.text + '; background:transparent; border:1px solid ' + th.border + '; border-radius:6px; padding:8px 0; cursor:pointer;')}>New filter</button>
                 </div>
+                <div style={css('padding:8px 11px 10px; border-top:1px solid ' + th.border + '; display:flex; align-items:center; gap:10px;')}>
+                  <span style={css('font-family:' + th.fu + '; font-size:9.5px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:' + th.muted + '; flex:1;')}>Backup</span>
+                  <button onClick={() => this.exportBackup()} style={css(backupBtn)}>Export all</button>
+                  <label style={css(backupBtn)}>Import all
+                    <input type="file" accept=".json,application/json" style={{ display: 'none' }}
+                      onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) f.text().then(t => this.importBackup(t)) }} />
+                  </label>
+                </div>
               </div>
             )}
           </div>
@@ -719,11 +871,25 @@ export default class App extends Component<Props, State> {
           <button onClick={() => this.clearAll()} style={css('font-family:' + th.fu + '; font-size:13px; font-weight:500; color:' + th.muted + '; background:transparent; border:1px solid ' + th.border + '; border-radius:' + th.radius + '; padding:9px 14px; cursor:pointer;')}>Clear items</button>
         </header>
 
+        {/* Mobile pane switcher */}
+        {narrow && (
+          <div role="tablist" aria-label="View" style={css('flex:none; display:flex; gap:6px; padding:8px 12px; border-bottom:1px solid ' + th.border + '; background:' + th.panel + ';')}>
+            {mobileTabs.map(t => (
+              <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => this.setState({ mobileTab: t.key })}
+                style={css('flex:1; font-family:' + th.fu + '; font-size:12.5px; font-weight:600; padding:9px 0; border-radius:8px; cursor:pointer; border:1px solid ' + (tab === t.key ? th.accent : th.border) + '; background:' + (tab === t.key ? th.accent : 'transparent') + '; color:' + (tab === t.key ? th.accentText : th.muted) + ';')}>{t.label}</button>
+            ))}
+          </div>
+        )}
+
         {/* MAIN */}
-        <main style={css('flex:1; min-height:0; display:grid; grid-template-columns:380px 1fr; gap:18px; padding:18px 22px;')}>
+        {(showLib || showFilter) && (
+        <main style={css(narrow
+          ? 'flex:1; min-height:0; display:grid; grid-template-columns:1fr; gap:0; padding:10px;'
+          : 'flex:1; min-height:0; display:grid; grid-template-columns:380px 1fr; gap:18px; padding:18px 22px;')}>
           {/* LIBRARY */}
+          {showLib && (
           <section style={css('display:flex; flex-direction:column; min-height:0; background:' + th.panel + '; border:1px solid ' + th.border + '; border-radius:' + th.radius + ';')}>
-            <div style={css('padding:14px 16px 12px; border-bottom:1px solid ' + th.border + ';')}>
+            <div className="eqs" style={css('flex:0 1 auto; min-height:0; overflow-y:auto; padding:14px 16px 12px; border-bottom:1px solid ' + th.border + ';')}>
               <div style={css('display:flex; align-items:center; justify-content:space-between; margin-bottom:11px;')}>
                 <h2 style={css('margin:0; font-family:' + th.fd + '; font-weight:600; font-size:15px; letter-spacing:0.05em; color:' + th.text + ';')}>Item Library</h2>
                 <span style={css('font-family:' + th.fm + '; font-size:11px; color:' + th.muted + ';')}>{filtered.length} items</span>
@@ -737,10 +903,19 @@ export default class App extends Component<Props, State> {
               <div role="radiogroup" aria-label="Filter library by category" style={css('display:flex; flex-wrap:wrap; gap:6px; margin-top:11px;')}>
                 {categories.map((c, i) => (
                   <button key={c.key} role="radio" aria-checked={c.active} tabIndex={c.active ? 0 : -1}
-                    onClick={c.onClick} onKeyDown={e => onRadioKey(e, cats, i, v => this.setState({ cat: v }))}
+                    onClick={c.onClick} onKeyDown={e => onRadioKey(e, cats, i, v => this.setState({ cat: v, sub: 'All' }))}
                     style={css(c.style)}>{c.key}</button>
                 ))}
               </div>
+              {subcats.length > 0 && (
+                <div role="radiogroup" aria-label="Filter library by subcategory" style={css('display:flex; flex-wrap:wrap; gap:6px; margin-top:7px; padding-left:11px; border-left:2px solid ' + th.border + ';')}>
+                  {subcats.map((c, i) => (
+                    <button key={c.key} role="radio" aria-checked={c.active} tabIndex={c.active ? 0 : -1}
+                      onClick={c.onClick} onKeyDown={e => onRadioKey(e, subList, i, v => this.setState({ sub: v }))}
+                      style={css(c.style)}>{c.key}</button>
+                  ))}
+                </div>
+              )}
               <div style={css('display:flex; align-items:center; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid ' + th.border + ';')}>
                 <span style={css('font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; color:' + th.muted + '; white-space:nowrap;')}>New items add as →</span>
                 <div role="radiogroup" aria-label="Action for newly added items" style={css('display:flex; gap:5px; flex:1;')}>
@@ -799,7 +974,7 @@ export default class App extends Component<Props, State> {
               </div>
             </div>
 
-            <div style={css('flex:1; min-height:0; display:flex; flex-direction:column; padding:8px;')}>
+            <div style={css('flex:1 1 0; min-height:120px; display:flex; flex-direction:column; padding:8px;')}>
               {canAddCustom && (
                 <button onClick={() => this.addItem(this.state.query.trim())} style={css('flex:none; width:100%; display:flex; align-items:center; gap:10px; text-align:left; background:transparent; border:1px dashed ' + th.accent + '; border-radius:' + th.radius + '; padding:10px 12px; margin-bottom:6px; cursor:pointer; color:' + th.accent + '; font-family:' + th.fu + '; font-size:13px;')}>
                   <span style={css('font-size:15px; line-height:1;')}>+</span>
@@ -828,10 +1003,12 @@ export default class App extends Component<Props, State> {
               )}
             </div>
           </section>
+          )}
 
           {/* FILTER */}
+          {showFilter && (
           <section style={css('display:flex; flex-direction:column; min-height:0; background:' + th.panel + '; border:1px solid ' + th.border + '; border-radius:' + th.radius + ';')}>
-            <div style={css('padding:14px 18px; border-bottom:1px solid ' + th.border + '; display:flex; align-items:center; gap:14px;')}>
+            <div style={css('padding:14px 18px; border-bottom:1px solid ' + th.border + '; display:flex; align-items:center; gap:14px;' + (narrow ? 'flex-wrap:wrap; gap:10px;' : ''))}>
               <h2 style={css('margin:0; font-family:' + th.fd + '; font-weight:600; font-size:15px; letter-spacing:0.05em; color:' + th.text + ';')}>Your Filter</h2>
               <div style={css('display:flex; gap:7px; flex-wrap:wrap;')}>
                 {summary.map(s => (
@@ -842,14 +1019,16 @@ export default class App extends Component<Props, State> {
                 ))}
               </div>
               <div style={css('flex:1;')}></div>
-              <span style={css(totalStyle)}>{this.state.rules.length} rules</span>
+              {!narrow && <span style={css(totalStyle)}>{this.state.rules.length} rules</span>}
             </div>
 
+            {!narrow && (
             <div style={css('display:grid; grid-template-columns:1fr 280px 34px; gap:12px; padding:9px 18px; border-bottom:1px solid ' + th.border + '; background:' + th.panel2 + ';')}>
               <span style={css('font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:' + th.muted + ';')}>Item</span>
               <span style={css('font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:' + th.muted + '; text-align:center;')}>Action</span>
               <span></span>
             </div>
+            )}
 
             <div style={css('flex:1; min-height:0; display:flex; flex-direction:column;')}>
               {this.state.rules.length === 0 && (
@@ -866,20 +1045,24 @@ export default class App extends Component<Props, State> {
                 </div>
               )}
               {visibleRules.length > 0 && (
-                <VList className="eqs" rowH={rowH} count={visibleRules.length} resetKey={rf}
+                <VList className="eqs" rowH={effRowH} count={visibleRules.length} resetKey={rf + (narrow ? 'm' : '')}
                   style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
                   row={i => {
                     const r = visibleRules[i]
                     const cat = this.findCat(r.name)
                     const type = cat ? cat.type : 'Custom'
+                    const removeBtn = <button className="eq-del" onClick={() => this.removeItem(r.name)} title="Remove" style={css('flex:none; width:30px; height:30px; border-radius:6px; cursor:pointer; font-size:15px; line-height:1;')}>×</button>
                     return (
-                      <div key={r.name} style={css('display:grid; grid-template-columns:1fr 280px 34px; gap:12px; align-items:center; height:' + rowH + 'px; padding:' + rowpad + '; border-bottom:1px solid ' + th.border + ';')}>
+                      <div key={r.name} style={css(narrow
+                        ? 'display:flex; flex-direction:column; gap:7px; justify-content:center; height:' + effRowH + 'px; padding:8px 12px; border-bottom:1px solid ' + th.border + ';'
+                        : 'display:grid; grid-template-columns:1fr 280px 34px; gap:12px; align-items:center; height:' + rowH + 'px; padding:' + rowpad + '; border-bottom:1px solid ' + th.border + ';')}>
                         <div style={css('display:flex; align-items:center; gap:11px; min-width:0;')}>
                           {iconBadge(cat, type, r.name)}
                           <span style={css('display:flex; flex-direction:column; gap:2px; min-width:0;')}>
                             <span style={css('font-family:' + th.fu + '; font-size:14px; color:' + th.text + '; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;')}>{r.name}</span>
                             <span style={css('font-family:' + th.fu + '; font-size:10.5px; letter-spacing:0.04em; color:' + th.muted + ';')}>{cat ? subOf(cat) : 'Custom item'}</span>
                           </span>
+                          {narrow && <><div style={css('flex:1;')}></div>{removeBtn}</>}
                         </div>
                         <div role="radiogroup" aria-label={'Action for ' + r.name} style={css('display:grid; grid-template-columns:repeat(4,1fr); gap:5px;')}>
                           {this.actionKeys.map((k, ai) => (
@@ -888,34 +1071,49 @@ export default class App extends Component<Props, State> {
                               style={css(actBtn(actionColors[k], r.action === k))}>{k}</button>
                           ))}
                         </div>
-                        <button className="eq-del" onClick={() => this.removeItem(r.name)} title="Remove" style={css('width:30px; height:30px; border-radius:6px; cursor:pointer; font-size:15px; line-height:1;')}>×</button>
+                        {!narrow && removeBtn}
                       </div>
                     )
                   }} />
               )}
             </div>
           </section>
+          )}
         </main>
+        )}
 
-        {/* IO FOOTER */}
-        <footer style={css('flex:none; border-top:1px solid ' + th.border + '; background:' + th.panel + ';')}>
+        {/* IO FOOTER / Export pane (its own tab when narrow) */}
+        {showExport && (
+        <footer style={css('border-top:1px solid ' + th.border + '; background:' + th.panel + ';' + (narrow ? 'flex:1; min-height:0; display:flex; flex-direction:column;' : 'flex:none;'))}>
+          {!narrow && !this.state.ioCollapsed && (
           <div onMouseDown={e => this.startResize(e)} title="Drag to resize" style={css('height:9px; cursor:ns-resize; display:flex; align-items:center; justify-content:center; background:' + th.panel2 + '; border-bottom:1px solid ' + th.border + ';')}>
             <div style={css('width:42px; height:3px; border-radius:3px; background:' + th.border + ';')}></div>
           </div>
-          <div style={css('display:flex; align-items:stretch; gap:0; padding:0 22px; border-bottom:1px solid ' + th.border + ';')}>
+          )}
+          <div style={css('display:flex; align-items:stretch; gap:0; padding:0 22px;' + (this.state.ioCollapsed ? '' : ' border-bottom:1px solid ' + th.border + ';'))}>
             {tabs.map(t => <button key={t.key} onClick={t.onClick} style={css(t.style)}>{t.label}</button>)}
             <div style={css('flex:1;')}></div>
-            <button onClick={() => this.toggleIoMax()} title={this.state.ioMax ? 'Collapse panel' : 'Expand panel'} style={css('display:flex; align-items:center; gap:7px; font-family:' + th.fu + '; font-size:12px; font-weight:500; color:' + th.muted + '; background:transparent; border:none; padding:0 4px; cursor:pointer;')}>
-              <span style={css('font-size:13px; line-height:1;')}>{this.state.ioMax ? '⤓' : '⤢'}</span><span>{this.state.ioMax ? 'Collapse' : 'Expand'}</span>
-            </button>
+            {!narrow && (
+            <div style={css('display:flex; align-items:center; gap:2px;')}>
+              {!this.state.ioCollapsed && (
+              <button onClick={() => this.toggleIoMax()} title={this.state.ioMax ? 'Restore height' : 'Expand panel'} style={css('display:flex; align-items:center; gap:7px; font-family:' + th.fu + '; font-size:12px; font-weight:500; color:' + th.muted + '; background:transparent; border:none; padding:0 8px; cursor:pointer;')}>
+                <span style={css('font-size:13px; line-height:1;')}>{this.state.ioMax ? '⤓' : '⤢'}</span><span>{this.state.ioMax ? 'Restore' : 'Expand'}</span>
+              </button>
+              )}
+              <button onClick={() => this.toggleIoCollapsed()} aria-expanded={!this.state.ioCollapsed} title={this.state.ioCollapsed ? 'Show export panel' : 'Hide export panel'} style={css('display:flex; align-items:center; gap:7px; font-family:' + th.fu + '; font-size:12px; font-weight:500; color:' + th.muted + '; background:transparent; border:none; padding:0 4px; cursor:pointer;')}>
+                <span style={css('font-size:11px; line-height:1;')}>{this.state.ioCollapsed ? '▴' : '▾'}</span><span>{this.state.ioCollapsed ? 'Show' : 'Hide'}</span>
+              </button>
+            </div>
+            )}
           </div>
 
-          <div style={css('padding:14px 22px 18px;')}>
+          {!this.state.ioCollapsed && (
+          <div className="eqs" style={css('padding:14px 22px 18px;' + (narrow ? 'flex:1; min-height:0; overflow-y:auto;' : ''))}>
             {this.state.panel === 'ini' && (
               <div style={css('display:flex; gap:16px; align-items:flex-start;')}>
                 <div style={css('flex:1; min-width:0;')}>
                   <div style={css('display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;')}>
-                    <span style={css('font-family:' + th.fu + '; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:' + th.muted + ';')}>filter.ini · placeholder format</span>
+                    <span style={css('font-family:' + th.fu + '; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:' + th.muted + ';')}>filter.ini · Loot / Merge / Store / Sell</span>
                     <div style={css('display:flex; gap:8px;')}>
                       <button onClick={() => this.downloadIni()} style={css('font-family:' + th.fu + '; font-size:12.5px; font-weight:600; color:' + th.text + '; background:transparent; border:1px solid ' + th.border + '; border-radius:6px; padding:7px 16px; cursor:pointer;')}>Download .ini</button>
                       <button onClick={() => this.copy(this.buildIni(), 'ini')} style={css('font-family:' + th.fu + '; font-size:12.5px; font-weight:600; color:' + th.accentText + '; background:' + th.accent + '; border:none; border-radius:6px; padding:7px 16px; cursor:pointer;')}>{this.state.copied === 'ini' ? 'Copied!' : 'Copy INI'}</button>
@@ -952,7 +1150,9 @@ export default class App extends Component<Props, State> {
               </div>
             )}
           </div>
+          )}
         </footer>
+        )}
 
         {/* SITE FOOTER */}
         <div style={css('flex:none; display:flex; align-items:center; gap:18px; flex-wrap:wrap; padding:11px 22px; border-top:1px solid ' + th.border + '; background:' + th.bg + ';')}>

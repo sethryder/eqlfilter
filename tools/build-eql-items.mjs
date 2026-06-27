@@ -143,13 +143,19 @@ function parseItem(title, text, zoneSet = new Set()) {
   // feeds the dragitem*.dds sheet extraction in tools/extract-icons.mjs.
   const icon = parseInt(param(text, "lucy_img_ID"), 10) >= 500 ? parseInt(param(text, "lucy_img_ID"), 10) : 0;
 
+  const type = classifyType(cats, slot, skill);
+  // Weapon class for the subcategory chips (e.g. "1H Slashing"): prefer the
+  // page's Skill line, else the matched weapon category. Empty for non-weapons.
+  const subtype = type === "Weapon" ? (skill || cats.find((c) => WEAPON_CATS.has(c)) || "") : "";
+
   return {
     name: param(text, "itemname") || title,
-    type: classifyType(cats, slot, skill),
+    type,
     slot,
     zones,
     flags,
     icon,
+    subtype,
   };
 }
 
