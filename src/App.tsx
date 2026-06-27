@@ -623,12 +623,30 @@ export default class App extends Component<Props, State> {
   }
   doImport() {
     const p = this.parseIni(this.state.importText)
-    this.setState(s => ({
-      name: p.name || s.name,
-      rules: p.rules.length ? p.rules : s.rules,
-      panel: 'ini' as const,
-      importText: '',
-    }))
+    this.setState(s => {
+      // Promote any rule we don't recognize into the local library, so an
+      // imported-but-unknown item persists and stays searchable instead of only
+      // living as a rule in this one filter. Tagged "Imported" so it's easy to spot
+      // and prune; type "Custom" since the INI carries no category/zone/slot.
+      const known = this.index().byName
+      const have = new Set(s.customItems.map(c => c.name.toLowerCase()))
+      const added: Item[] = []
+      p.rules.forEach((r, i) => {
+        const k = r.name.toLowerCase()
+        if (known.has(k) || have.has(k)) return
+        have.add(k)
+        added.push({ id: 'c' + Date.now().toString(36) + i, name: r.name, type: 'Custom', slot: '', zones: [], flags: ['Imported'] })
+      })
+      const customItems = added.length ? [...added, ...s.customItems] : s.customItems
+      if (added.length) this.persistItems(customItems)
+      return {
+        name: p.name || s.name,
+        rules: p.rules.length ? p.rules : s.rules,
+        customItems,
+        panel: 'ini' as const,
+        importText: '',
+      }
+    })
   }
   shareUrl() {
     try {
