@@ -141,6 +141,8 @@ export default class App extends Component<Props, State> {
   _onKey!: (e: KeyboardEvent) => void
   _mq?: MediaQueryList
   _onMq!: (e: MediaQueryListEvent) => void
+  _csq?: MediaQueryList
+  _onCs!: () => void
   static MOBILE_Q = '(max-width: 900px)'
 
   constructor(props: Props) {
@@ -434,8 +436,13 @@ export default class App extends Component<Props, State> {
   toggleIoCollapsed() { this.setState(s => ({ ioCollapsed: !s.ioCollapsed })) }
 
   currentMode(): 'dark' | 'light' {
-    if (this.state.mode) return this.state.mode
-    return this.props.skin === 'Parchment' ? 'light' : 'dark'
+    if (this.state.mode) return this.state.mode               // explicit user choice wins
+    if (this.props.skin === 'Parchment') return 'light'
+    // No saved choice: follow the OS. prefers-color-scheme reports 'light' when
+    // unset, so only an explicit dark OS goes dark — everything else falls through
+    // to Parchment (light), which has more character.
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark'
+    return 'light'
   }
   toggleMode() {
     const next = this.currentMode() === 'dark' ? 'light' : 'dark'
@@ -500,6 +507,10 @@ export default class App extends Component<Props, State> {
     this._onMq = e => this.setState({ narrow: e.matches })
     this._mq.addEventListener('change', this._onMq)
     this.setState({ narrow: this._mq.matches })
+    // Follow OS light/dark changes — but only while the user hasn't picked a mode.
+    this._csq = window.matchMedia('(prefers-color-scheme: dark)')
+    this._onCs = () => { if (!this.state.mode) this.forceUpdate() }
+    this._csq.addEventListener('change', this._onCs)
     this._draftReady = true
   }
 
@@ -518,6 +529,7 @@ export default class App extends Component<Props, State> {
     document.removeEventListener('mousedown', this._onDocDown)
     document.removeEventListener('keydown', this._onKey)
     this._mq?.removeEventListener('change', this._onMq)
+    this._csq?.removeEventListener('change', this._onCs)
   }
 
   onSearchKey(e: React.KeyboardEvent) {
