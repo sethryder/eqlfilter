@@ -703,7 +703,9 @@ export default class App extends Component<Props, State> {
       ';--text:' + th.text + ';--muted:' + th.muted + ';--accent:' + th.accent + ';--accentText:' + th.accentText +
       ';--danger:' + th.danger + ';--radius:' + th.radius + ';--rowpad:' + rowpad +
       ';--font-display:' + th.fd + ';--font-ui:' + th.fu + ';--font-mono:' + th.fm +
-      ';height:100dvh;display:flex;flex-direction:column;overflow:hidden;background:' + th.bg + ';color:' + th.text + ';font-family:' + th.fu + ';'
+      // ponytail: narrow lets the page scroll (lists get explicit vh height below so VList still bounds);
+      // desktop stays a locked 100dvh app shell.
+      ';' + (this.state.narrow ? 'min-height:100dvh;' : 'height:100dvh;overflow:hidden;') + 'display:flex;flex-direction:column;background:' + th.bg + ';color:' + th.text + ';font-family:' + th.fu + ';'
 
     const dot = (c: string) => 'flex:none;width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:' + th.fm + ';font-weight:600;font-size:13px;color:#fff;background:' + c + ';box-shadow:inset 0 0 0 1px rgba(255,255,255,0.12);'
 
@@ -921,12 +923,12 @@ export default class App extends Component<Props, State> {
         {/* MAIN */}
         {(showLib || showFilter) && (
         <main style={css(narrow
-          ? 'flex:1; min-height:0; display:grid; grid-template-columns:1fr; gap:0; padding:10px;'
+          ? 'display:grid; grid-template-columns:1fr; gap:0; padding:10px;'
           : 'flex:1; min-height:0; display:grid; grid-template-columns:380px 1fr; gap:18px; padding:18px 22px;')}>
           {/* LIBRARY */}
           {showLib && (
           <section style={css('display:flex; flex-direction:column; min-height:0; background:' + th.panel + '; border:1px solid ' + th.border + '; border-radius:' + th.radius + ';')}>
-            <div className="eqs" style={css('flex:0 1 auto; min-height:0; overflow-y:auto; padding:14px 16px 12px; border-bottom:1px solid ' + th.border + ';')}>
+            <div className="eqs" style={css((narrow ? 'flex:none;' : 'flex:0 1 auto; min-height:0; overflow-y:auto;') + ' padding:14px 16px 12px; border-bottom:1px solid ' + th.border + ';')}>
               <div style={css('display:flex; align-items:center; justify-content:space-between; margin-bottom:11px;')}>
                 <h2 style={css('margin:0; font-family:' + th.fd + '; font-weight:600; font-size:15px; letter-spacing:0.05em; color:' + th.text + ';')}>Item Library</h2>
                 <span style={css('font-family:' + th.fm + '; font-size:11px; color:' + th.muted + ';')}>{filtered.length} items</span>
@@ -1011,7 +1013,7 @@ export default class App extends Component<Props, State> {
               </div>
             </div>
 
-            <div style={css('flex:1 1 0; min-height:120px; display:flex; flex-direction:column; padding:8px;')}>
+            <div style={css((narrow ? 'flex:none;' : 'flex:1 1 0; min-height:120px;') + ' display:flex; flex-direction:column; padding:8px;')}>
               {canAddCustom && (
                 <button onClick={() => this.addItem(this.state.query.trim())} style={css('flex:none; width:100%; display:flex; align-items:center; gap:10px; text-align:left; background:transparent; border:1px dashed ' + th.accent + '; border-radius:' + th.radius + '; padding:10px 12px; margin-bottom:6px; cursor:pointer; color:' + th.accent + '; font-family:' + th.fu + '; font-size:13px;')}>
                   <span style={css('font-size:15px; line-height:1;')}>+</span>
@@ -1023,7 +1025,7 @@ export default class App extends Component<Props, State> {
               )}
               {filtered.length > 0 && (
                 <VList className="eqs" rowH={50} count={filtered.length} resetKey={q + '|' + this.state.zone + '|' + this.state.cat}
-                  style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
+                  style={narrow ? { height: '65vh', overflowY: 'auto' } : { flex: 1, minHeight: 0, overflowY: 'auto' }}
                   row={i => {
                     const c = filtered[i]
                     return (
@@ -1083,7 +1085,7 @@ export default class App extends Component<Props, State> {
               )}
               {visibleRules.length > 0 && (
                 <VList className="eqs" rowH={effRowH} count={visibleRules.length} resetKey={rf + (narrow ? 'm' : '')}
-                  style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
+                  style={narrow ? { height: '65vh', overflowY: 'auto' } : { flex: 1, minHeight: 0, overflowY: 'auto' }}
                   row={i => {
                     const r = visibleRules[i]
                     const cat = this.findCat(r.name)
@@ -1121,7 +1123,7 @@ export default class App extends Component<Props, State> {
 
         {/* IO FOOTER / Export pane (its own tab when narrow) */}
         {showExport && (
-        <footer style={css('border-top:1px solid ' + th.border + '; background:' + th.panel + ';' + (narrow ? 'flex:1; min-height:0; display:flex; flex-direction:column;' : 'flex:none;'))}>
+        <footer style={css('border-top:1px solid ' + th.border + '; background:' + th.panel + ';' + (narrow ? 'display:flex; flex-direction:column;' : 'flex:none;'))}>
           {!narrow && !this.state.ioCollapsed && (
           <div onMouseDown={e => this.startResize(e)} title="Drag to resize" style={css('height:9px; cursor:ns-resize; display:flex; align-items:center; justify-content:center; background:' + th.panel2 + '; border-bottom:1px solid ' + th.border + ';')}>
             <div style={css('width:42px; height:3px; border-radius:3px; background:' + th.border + ';')}></div>
@@ -1145,7 +1147,7 @@ export default class App extends Component<Props, State> {
           </div>
 
           {!this.state.ioCollapsed && (
-          <div className="eqs" style={css('padding:14px 22px 18px;' + (narrow ? 'flex:1; min-height:0; overflow-y:auto;' : ''))}>
+          <div className="eqs" style={css('padding:14px 22px 18px;')}>
             {this.state.panel === 'ini' && (
               <div style={css('display:flex; gap:16px; align-items:flex-start;')}>
                 <div style={css('flex:1; min-width:0;')}>
