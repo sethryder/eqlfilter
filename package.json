@@ -1,0 +1,28 @@
+{
+  "name": "eqlfilter",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "items:import": "node tools/import-eqemu.mjs",
+    "items:scrape": "node tools/build-eql-items.mjs > data/items.legends.json",
+    "items:merge": "node tools/merge-ini.mjs",
+    "items:build": "node tools/build-catalog.mjs",
+    "icons:extract": "node tools/extract-icons.mjs"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}

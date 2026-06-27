@@ -1,0 +1,8 @@
+node_modules
+dist
+*.local
+.DS_Store
+submissions
+
+# WSL/NTFS alternate-data-stream junk
+*:Zone.Identifier
