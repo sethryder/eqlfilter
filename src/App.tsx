@@ -313,7 +313,20 @@ export default class App extends Component<Props, State> {
       return { saved, currentId: s.currentId === id ? null : s.currentId }
     })
   }
+  // True when the current filter has edits not matching the saved copy (or isn't saved).
+  isDirty() {
+    const cur = this.state.currentId ? this.state.saved.find(f => f.id === this.state.currentId) : null
+    const same = (a: Rule[], b: Rule[]) => a.length === b.length && a.every((r, i) => b[i] && b[i].name === r.name && b[i].action === r.action)
+    return !cur || cur.name !== this.state.name || !same(this.state.rules, cur.rules)
+  }
+  // Confirm before wiping items — but only when there's unsaved work to lose.
+  confirmDiscard(action: string) {
+    const n = this.state.rules.length
+    return !n || !this.isDirty() || confirm(action + ' ' + n + ' unsaved item' + (n === 1 ? '' : 's') + '? This can\'t be undone.')
+  }
+
   newFilter() {
+    if (!this.confirmDiscard('Start a new filter and discard')) return
     this.setState({ name: 'New Filter', rules: [], currentId: null, menuOpen: false, query: '' })
   }
   toggleMenu() { this.setState(s => ({ menuOpen: !s.menuOpen })) }
@@ -457,7 +470,7 @@ export default class App extends Component<Props, State> {
   }
   removeItem(n: string) { this.setState(s => ({ rules: s.rules.filter(r => r.name !== n) })) }
   setAction(n: string, a: string) { this.setState(s => ({ rules: s.rules.map(r => r.name === n ? { name: r.name, action: a } : r) })) }
-  clearAll() { this.setState({ rules: [] }) }
+  clearAll() { if (this.confirmDiscard('Clear')) this.setState({ rules: [] }) }
 
   addAllAs(action: string) {
     const matches = this.allItems().filter(c => this.matchesFilter(c))
@@ -621,8 +634,7 @@ export default class App extends Component<Props, State> {
       return Math.floor(d / day) + 'd ago'
     }
     const cur = this.state.currentId ? this.state.saved.find(f => f.id === this.state.currentId) : null
-    const sameRules = (a: Rule[], b: Rule[]) => a.length === b.length && a.every((r, i) => b[i] && b[i].name === r.name && b[i].action === r.action)
-    const dirty = !cur || cur.name !== this.state.name || !sameRules(this.state.rules, cur.rules)
+    const dirty = this.isDirty()
     const rowBase = 'display:flex; align-items:center; gap:8px; padding:8px 9px; border-radius:7px; margin-bottom:2px;'
     const savedList = this.state.saved.map(f => ({
       id: f.id, name: f.name,
