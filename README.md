@@ -15,11 +15,70 @@ npm run typecheck  # tsc, optional; build doesn't typecheck
 ## Deploy (Laravel Forge)
 
 It's a static site — no PHP process. Point a Forge **static** site at `dist/`, or build on the
-server and serve `dist/` with nginx. Single-page app, so route everything to `index.html`:
+server and serve `dist/` with nginx.
+
+### nginx (caching + SPA routing)
+
+The whole caching strategy is one rule: **hashed files cache forever, everything else
+revalidates.** Vite fingerprints `/assets/*` (e.g. `index-BnccLqB8.js`), so those can be
+immutable for a year — a new build means a new filename. Everything in the site root is
+*unhashed* and can change in place (`index.html` on every deploy, `eql-items.json` on a data
+swap), so it must revalidate or users get stale references to assets that no longer exist.
 
 ```nginx
-location / { try_files $uri $uri/ /index.html; }
+# Fingerprinted build assets — filename changes when content does, cache forever.
+location /assets/ {
+    add_header Cache-Control "public, max-age=31536000, immutable";
+    try_files $uri =404;
+}
+
+# Item catalog — swapped in place without a new name, so always revalidate.
+# nginx serves an ETag, so revalidation is a cheap 304 when it hasn't changed.
+location = /eql-items.json {
+    add_header Cache-Control "no-cache";
+}
+
+# Icons / og image / favicon — unhashed but rarely change. A week is a safe middle;
+# bump the filename or purge if you replace one.
+location ~* \.(png|svg|ico|webp)$ {
+    add_header Cache-Control "public, max-age=604800";
+    try_files $uri =404;
+}
+
+# App shell + SPA fallback. index.html points at the hashed assets, so it must never
+# be cached long — otherwise a deploy ships new assets the old HTML can't find.
+location = /index.html {
+    add_header Cache-Control "no-cache";
+}
+location / {
+    try_files $uri $uri/ /index.html;
+}
 ```
+
+Note: `add_header` set in a `location` drops any `add_header` inherited from the `server`
+block — so keep security/other headers inside each location, or define them server-wide and
+re-`add_header` them here. Verify with `curl -I https://eqlfilter.com/assets/<file>.js`.
+
+### CloudFlare
+
+CloudFlare's defaults already do most of the right thing; the goal is to let the origin
+headers above drive everything.
+
+- **Caching → Configuration → Browser Cache TTL: "Respect Existing Headers."** Without this,
+  CF overrides our `Cache-Control` with its own TTL and the immutable/no-cache split is lost.
+- **Default behavior is correct out of the box:** CF edge-caches static extensions (`/assets/*.js`,
+  `.css`, `.png`, `.svg`) but does **not** edge-cache `.html` or `.json`. That's exactly what we
+  want — `index.html` and `eql-items.json` keep hitting the origin and revalidating, so deploys
+  and data swaps go live immediately. **Do not turn on a "Cache Everything" page rule** — it
+  would cache `index.html` at the edge and serve stale builds.
+- **On deploy:** nothing to purge. Assets are hashed (new names) and HTML/JSON aren't edge-cached.
+- **On a data swap** (`eql-items.json`): also nothing required, since CF doesn't edge-cache JSON
+  by default. *If* you ever add a Cache Rule that caches it at the edge, purge that URL after a swap
+  (`Caching → Purge → Custom URL`).
+- **Free wins to toggle on:** Brotli, HTTP/3, Always Use HTTPS, Tiered Cache. Skip Auto Minify —
+  Vite already minifies, and CF deprecated it.
+
+Single-page app, so all routes fall back to `index.html` (the `location /` block above).
 
 ## Item catalog (`public/eql-items.json`)
 
