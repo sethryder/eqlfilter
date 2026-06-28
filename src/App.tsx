@@ -1028,7 +1028,7 @@ export default class App extends Component<Props, State> {
                   row={i => {
                     const c = filtered[i]
                     return (
-                      <button key={c.id} className="eq-res" onClick={() => this.addItem(c.name)} style={css('width:100%; height:50px; display:flex; align-items:center; gap:11px; text-align:left; border-radius:' + th.radius + '; padding:8px 10px; cursor:pointer;')}>
+                      <button key={c.id} className="eq-res" onClick={() => this.addItem(c.name)} style={css('width:100%; height:50px; display:flex; align-items:center; gap:11px; text-align:left; border-radius:' + th.radius + '; padding:8px 16px 8px 10px; cursor:pointer;')}>
                         {iconBadge(c, c.type, c.name)}
                         <span style={css('flex:1; min-width:0; display:flex; flex-direction:column; gap:2px;')}>
                           <span style={css('font-family:' + th.fu + '; font-size:13.5px; color:' + th.text + '; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;')}>{c.name}</span>
