@@ -8,6 +8,19 @@
   <link rel="canonical" href="https://eqlfilter.com/" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 
+  <!-- Paint the themed background before first render so there's no white flash.
+       data-cf-async="false" keeps Cloudflare Rocket Loader from deferring it. -->
+  <script data-cf-async="false">
+    (function () {
+      try {
+        var m = localStorage.getItem('eqlfilter.mode.v1');
+        if (m !== 'dark' && m !== 'light')
+          m = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.style.backgroundColor = m === 'dark' ? '#15171b' : '#e3d7bd';
+      } catch (e) {}
+    })();
+  </script>
+
   <!-- Open Graph / Twitter — share links unfurl with a preview card -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="EQLFilter" />

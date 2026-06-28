@@ -218,7 +218,9 @@ export default class App extends Component<Props, State> {
     ioHeight: 140,
     ioMax: false,
     ioCollapsed: false,
-    mode: null,
+    mode: ((): 'dark' | 'light' | null => {
+      try { const m = localStorage.getItem('eqlfilter.mode.v1'); return m === 'dark' || m === 'light' ? m : null } catch (e) { return null }
+    })(),
     saved: [],
     currentId: null,
     menuOpen: false,
@@ -452,10 +454,7 @@ export default class App extends Component<Props, State> {
 
   componentDidMount() {
     this.setState({ saved: this.loadSaved(), customItems: this.loadItems() })
-    try {
-      const m = localStorage.getItem(this.MODE_KEY)
-      if (m === 'dark' || m === 'light') this.setState({ mode: m })
-    } catch (e) {}
+    // mode is read into initial state (see state init) so first paint matches — no flash.
     fetch('./eql-items.json')
       .then(r => (r.ok ? r.json() : null))
       .then(list => {
