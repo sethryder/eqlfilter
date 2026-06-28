@@ -87,10 +87,12 @@ Each item is `{ name, type, slot, zones: string[], flags: string[] }`; `type` is
 Jewelry / Tradeskill / Container / Misc. `zones` is a list (items drop in many zones); the zone filter
 matches membership and the subtitle summarizes ">1" as "N zones".
 
-`eql-items.json` is **built** from layered sources in `data/`, merged low→high precedence (a later layer
-overrides an earlier one by item name, field-by-field — so a Legends entry can override an item's type
-while keeping its classic zones). EverQuest Legends adds/changes items, so the Legends layer sits on top
-of the EQEMU classic base.
+`eql-items.json` is **built** from layered sources in `data/`. The **classic layer is the authoritative
+item set** — EQ Legends launches classic-only (0 expansions), so the catalog must not carry later-era
+items. Later layers **enrich** the classic base field-by-field by item name (a Legends entry overrides an
+item's type/slot/flags while keeping its classic zones) but **do not add new items** — the wiki/custom
+layers span all expansions, and adding them would reintroduce non-classic content. See
+`docs/building-eq_classic-csv.md` for how the classic base is built and expansion-filtered.
 
 | Layer | Source | Command |
 |---|---|---|
@@ -101,7 +103,7 @@ of the EQEMU classic base.
 
 Workflow: refresh a layer (import / scrape / merge), then `npm run items:build` to rebuild the catalog.
 
-- `items:import` maps EQEMU's ~35 item types to the 6 categories and splits pipe-delimited zones (no flags in that source).
+- `items:import` maps EQEMU's ~35 item types to the 6 categories and splits pipe-delimited zones (no flags in that source). The `eq_classic.csv` it reads is itself extracted from the ProjectEQ DB dump — see `docs/building-eq_classic-csv.md` to regenerate it.
 - `items:scrape` (`tools/build-eql-items.mjs`) hits the EQL Wiki MediaWiki API and parses each item page's
   `{{Itempage}}` template: statsblock → slot/flags (handles "NO TRADE"), `[[Category:…]]` → type. Zones come
   from the item's `dropsfrom` **and** its zone categories (an item in a zone is in `Category:<Zone>`, which is
