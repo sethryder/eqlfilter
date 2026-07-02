@@ -89,7 +89,10 @@ class VList extends Component<{
 }
 
 type Rule = { name: string; action: string }
-type Item = { id: string; name: string; type: string; slot: string; zones: string[]; flags: string[]; icon?: number; subtype?: string }
+// `id` is the app-internal key; `itemId` is the game's item id — the in-game filter
+// INI (ITEM_ID^FILTER_ID^ICON_ID^ITEM_NAME) keys rows on it, so items without one
+// can't be exported.
+type Item = { id: string; name: string; type: string; slot: string; zones: string[]; flags: string[]; icon?: number; itemId?: number; subtype?: string }
 
 // Canonical equip slots. Multi-slot items list several ("Neck Wrist Waist"); we
 // split on these so each counts under its real slots instead of forming a junk
@@ -241,6 +244,7 @@ export default class App extends Component<Props, State> {
       zones: Array.isArray(c.zones) ? c.zones : (c.zone ? [c.zone] : []),
       flags: Array.isArray(c.flags) ? c.flags : [],
       icon: c.icon || 0,
+      itemId: c.itemId || 0,
       subtype: c.subtype || '',
     }))
     this.forceUpdate()
@@ -257,11 +261,19 @@ export default class App extends Component<Props, State> {
   // every keystroke.
   index() {
     if (!this._idx || this._idx.catRef !== this.catalog || this._idx.custRef !== this.state.customItems) {
-      const seen = new Set<string>(), items: Item[] = []
+      const seen = new Map<string, Item>(), items: Item[] = []
       for (const it of this.state.customItems.concat(this.catalog)) {
         const k = it.name.toLowerCase()
-        if (seen.has(k)) continue
-        seen.add(k); items.push(it)
+        const prev = seen.get(k)
+        if (prev) {
+          // A custom entry shadows the catalog entry of the same name, but game ids are
+          // facts, not user preferences — backfill them so an old id-less custom item
+          // can't hide the catalog's valid itemId from buildIni.
+          if (!prev.itemId && it.itemId) { prev.itemId = it.itemId; if (!prev.icon) prev.icon = it.icon }
+          continue
+        }
+        const copy = { ...it }
+        seen.set(k, copy); items.push(copy)
       }
       const byName = new Map(items.map(it => [it.name.toLowerCase(), it]))
       const zones = Array.from(new Set(items.flatMap(c => c.zones))).filter(Boolean).sort()
@@ -387,6 +399,7 @@ export default class App extends Component<Props, State> {
         type: c.type || 'Misc', slot: c.slot || '',
         zones: Array.isArray(c.zones) ? c.zones : (c.zone ? [c.zone] : []),
         flags: Array.isArray(c.flags) ? c.flags : [],
+        icon: c.icon || 0, itemId: c.itemId || 0, subtype: c.subtype || '',
       })
       addedItems++
     })
@@ -464,6 +477,7 @@ export default class App extends Component<Props, State> {
         if (n > 0) this.setState({ rules: this.allItems().slice(0, n).map(c => ({ name: c.name, action: 'Loot' })) })
       })
       .catch(() => {})
+      .finally(() => this.applySharedMeta())
 
     // Priority: shared link > saved draft > defaults.
     let restored = false
@@ -477,6 +491,15 @@ export default class App extends Component<Props, State> {
           currentId: null,
           rules: (d.r || []).map((x: any) => ({ name: x.n, action: this.actionKeys.includes(x.a) ? x.a : 'Loot' })),
         })
+        // The link may carry game ids for the sender's custom/pinned items — merge
+        // them into this browser's library once the catalog has loaded (before that,
+        // known names would be misfiled as Custom).
+        const meta = new Map<string, { itemId: number; icon: number }>()
+        const names: string[] = []
+        for (const x of d.r || []) {
+          if (x && x.n && +x.i > 0) { meta.set(String(x.n).toLowerCase(), { itemId: +x.i, icon: +x.c || 0 }); names.push(String(x.n)) }
+        }
+        if (names.length) this._sharedMeta = { meta, names }
         restored = true
       }
     } catch (e) {}
@@ -511,6 +534,19 @@ export default class App extends Component<Props, State> {
     this._onCs = () => { if (!this.state.mode) this.forceUpdate() }
     this._csq.addEventListener('change', this._onCs)
     this._draftReady = true
+  }
+
+  _sharedMeta?: { meta: Map<string, { itemId: number; icon: number }>; names: string[] }
+  applySharedMeta() {
+    const sm = this._sharedMeta
+    if (!sm) return
+    this._sharedMeta = undefined
+    this.setState(s => {
+      const customItems = this.mergeImportedIds(sm.meta, sm.names, s.customItems)
+      if (!customItems) return null
+      this.persistItems(customItems)
+      return { customItems }
+    })
   }
 
   persistDraft() {
@@ -605,19 +641,48 @@ export default class App extends Component<Props, State> {
     })
   }
 
+  // The game's LF_<Character>_<server>.ini format: a #-comment header, then one
+  // ITEM_ID^FILTER_ID^ICON_ID^ITEM_NAME row per item. FILTER_ID is NOT the UI column
+  // order — confirmed against an in-game screenshot of a real filter: 1=Store 2=Loot
+  // 3=Merge 4=Sell. CRLF because the game writes CRLF. Rules whose item has no game
+  // id can't be represented — skipped (counted by unexportable() and flagged in the
+  // export panel).
+  // Where the game reads/writes LF_<Character>_<server>.ini (default install).
+  UD_PATH = 'C:\\Users\\Public\\Daybreak Game Company\\Installed Games\\EverQuest Legends\\userdata'
+  FILTER_ID: Record<string, number> = { Store: 1, Loot: 2, Merge: 3, Sell: 4 }
+  FILTER_ACTION = ['', 'Store', 'Loot', 'Merge', 'Sell']
   buildIni() {
-    const s = this.state
-    let o = '; EverQuest Legends Loot Filter\n; Created with EQLFilter — eqlfilter.com\n; In-game: Advanced Loot > Filters, set each item to Loot / Merge / Store / Sell.\n\n[Filter]\nName=' + s.name + '\n\n[Rules]\n'
-    s.rules.forEach(r => { o += r.name + '=' + r.action + '\n' })
+    let o = '#ITEM_ID^FILTER_ID^ICON_ID^ITEM_NAME\r\n'
+    this.state.rules.forEach(r => {
+      const it = this.findCat(r.name)
+      if (!it || !it.itemId) return
+      o += it.itemId + '^' + (this.FILTER_ID[r.action] || 2) + '^' + (it.icon || 0) + '^' + it.name + '\r\n'
+    })
     return o
   }
+  unexportable() {
+    return this.state.rules.filter(r => { const it = this.findCat(r.name); return !it || !it.itemId })
+  }
+  // Parses the game's caret format; still reads this app's old [Rules] Name=Action
+  // exports so pre-beta saved files keep importing. Caret rows carry the game's
+  // item id + icon, returned in `meta` so unknown items join the library with them.
   parseIni(text: string) {
     const lines = (text || '').split(/\r?\n/)
     let name: string | null = null, section = ''
     const rules: Rule[] = []
+    const meta = new Map<string, { itemId: number; icon: number }>()
     for (const raw of lines) {
       const line = raw.trim()
       if (!line || line.charAt(0) === ';' || line.charAt(0) === '#') continue
+      const car = line.split('^')
+      if (car.length >= 4 && parseInt(car[0], 10) > 0) {
+        const itemId = parseInt(car[0], 10), fid = parseInt(car[1], 10), icon = parseInt(car[2], 10) || 0
+        const nm = car.slice(3).join('^').trim()
+        if (!nm) continue
+        rules.push({ name: nm, action: this.FILTER_ACTION[fid] || 'Loot' })
+        meta.set(nm.toLowerCase(), { itemId, icon })
+        continue
+      }
       if (line.charAt(0) === '[') { section = line.replace(/[\[\]]/g, '').trim().toLowerCase(); continue }
       const eq = line.indexOf('=')
       if (eq < 0) continue
@@ -630,30 +695,52 @@ export default class App extends Component<Props, State> {
         rules.push({ name: k, action })
       }
     }
-    return { name, rules }
+    return { name, rules, meta }
   }
-  doImport() {
-    const p = this.parseIni(this.state.importText)
-    this.setState(s => {
-      // Promote any rule we don't recognize into the local library, so an
-      // imported-but-unknown item persists and stays searchable instead of only
-      // living as a rule in this one filter. Tagged "Imported" so it's easy to spot
-      // and prune; type "Custom" since the INI carries no category/zone/slot.
-      const known = this.index().byName
-      const have = new Set(s.customItems.map(c => c.name.toLowerCase()))
-      const added: Item[] = []
-      p.rules.forEach((r, i) => {
-        const k = r.name.toLowerCase()
-        if (known.has(k) || have.has(k)) return
+  // Fold imported name → (game id, icon) facts into the custom library: pin ids onto
+  // id-less custom items (game ids are facts, not user data), promote unknown names
+  // into the library so an imported-but-unknown item persists and stays searchable
+  // (tagged "Imported", type "Custom" — the INI carries no category/zone/slot), and
+  // pin ids onto known catalog items that lack one via a custom override (custom
+  // entries shadow same-named catalog entries in index()). Null = nothing changed.
+  mergeImportedIds(meta: Map<string, { itemId: number; icon: number }>, names: string[], customItems: Item[]): Item[] | null {
+    const known = this.index().byName
+    let pinned = 0
+    const existing = customItems.map(c => {
+      const m = meta.get(c.name.toLowerCase())
+      if (m && m.itemId && !c.itemId) { pinned++; return { ...c, itemId: m.itemId, icon: m.icon || c.icon } }
+      return c
+    })
+    const have = new Set(existing.map(c => c.name.toLowerCase()))
+    const added: Item[] = []
+    names.forEach((name, i) => {
+      const k = name.toLowerCase()
+      if (have.has(k)) return
+      const m = meta.get(k)
+      const cur = known.get(k)
+      if (cur) {
+        if (!m || !m.itemId || cur.itemId) return
         have.add(k)
-        added.push({ id: 'c' + Date.now().toString(36) + i, name: r.name, type: 'Custom', slot: '', zones: [], flags: ['Imported'] })
-      })
-      const customItems = added.length ? [...added, ...s.customItems] : s.customItems
-      if (added.length) this.persistItems(customItems)
+        added.push({ ...cur, id: 'c' + Date.now().toString(36) + i, itemId: m.itemId, icon: m.icon || cur.icon })
+        return
+      }
+      have.add(k)
+      added.push({ id: 'c' + Date.now().toString(36) + i, name, type: 'Custom', slot: '', zones: [], flags: ['Imported'], itemId: m ? m.itemId : 0, icon: m ? m.icon : 0 })
+    })
+    return added.length || pinned ? [...added, ...existing] : null
+  }
+  doImport(fileName?: string) {
+    const p = this.parseIni(this.state.importText)
+    // The caret format carries no filter name, but the game's filename does:
+    // LF_Washclof_freeport.ini -> "Washclof_freeport".
+    const fromFile = (fileName || '').replace(/\.ini$/i, '').replace(/^LF_/i, '')
+    this.setState(s => {
+      const customItems = this.mergeImportedIds(p.meta, p.rules.map(r => r.name), s.customItems)
+      if (customItems) this.persistItems(customItems)
       return {
-        name: p.name || s.name,
+        name: p.name || fromFile || s.name,
         rules: p.rules.length ? p.rules : s.rules,
-        customItems,
+        customItems: customItems || s.customItems,
         panel: 'ini' as const,
         importText: '',
       }
@@ -661,7 +748,18 @@ export default class App extends Component<Props, State> {
   }
   shareUrl() {
     try {
-      const d = { n: this.state.name, r: this.state.rules.map(r => ({ n: r.name, a: r.action })) }
+      const d = {
+        n: this.state.name,
+        r: this.state.rules.map(r => {
+          const x: any = { n: r.name, a: r.action }
+          // Rows resolved from the shipped catalog need no extra data — the recipient
+          // has the same catalog. Custom/pinned items exist only in this browser, so
+          // carry their game id + icon or the recipient's export would drop them.
+          const it = this.findCat(r.name)
+          if (it && it.itemId && it.id.charAt(0) === 'c') { x.i = it.itemId; x.c = it.icon || 0 }
+          return x
+        }),
+      }
       const b = b64encode(JSON.stringify(d))
       const base = (window.location.href || '').split('#')[0]
       return base + '#f=' + encodeURIComponent(b)
@@ -672,7 +770,9 @@ export default class App extends Component<Props, State> {
     const blob = new Blob([this.buildIni()], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url; a.download = safe + '.ini'
+    // The game only reads LF_<Character>_<server>.ini, so start the name with LF_;
+    // naming the filter "Washclof_freeport" yields the exact file the game wants.
+    a.href = url; a.download = 'LF_' + safe + '.ini'
     document.body.appendChild(a); a.click(); a.remove()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
@@ -698,7 +798,10 @@ export default class App extends Component<Props, State> {
     // Exact rule-row height — VList windows on it, so each row must be this tall (border-box).
     const rowH = (this.props.density === 'Compact') ? 46 : 56
     const rootStyle =
-      '--bg:' + th.bg + ';--panel:' + th.panel + ';--panel2:' + th.panel2 + ';--border:' + th.border +
+      // color-scheme drives native widget popups (the zone <select>): without it the
+      // browser renders a light/dark popup by OS whim and option text can go illegible.
+      'color-scheme:' + (skinName === 'Parchment' ? 'light' : 'dark') +
+      ';--bg:' + th.bg + ';--panel:' + th.panel + ';--panel2:' + th.panel2 + ';--border:' + th.border +
       ';--text:' + th.text + ';--muted:' + th.muted + ';--accent:' + th.accent + ';--accentText:' + th.accentText +
       ';--danger:' + th.danger + ';--radius:' + th.radius + ';--rowpad:' + rowpad +
       ';--font-display:' + th.fd + ';--font-ui:' + th.fu + ';--font-mono:' + th.fm +
@@ -936,7 +1039,7 @@ export default class App extends Component<Props, State> {
                 style={css('width:100%; font-family:' + th.fu + '; font-size:14px; color:' + th.text + '; background:' + th.panel2 + '; border:1px solid ' + th.border + '; border-radius:' + th.radius + '; padding:10px 13px;')} />
               <select value={this.state.zone} onChange={e => this.setState({ zone: e.target.value })} className="eqi"
                 style={css('width:100%; margin-top:9px; font-family:' + th.fu + '; font-size:13px; color:' + th.text + '; background:' + th.panel2 + '; border:1px solid ' + th.border + '; border-radius:' + th.radius + '; padding:9px 12px; cursor:pointer;')}>
-                {zoneOptions.map(z => <option key={z.value} value={z.value} style={{ color: '#15171b' }}>{z.label}</option>)}
+                {zoneOptions.map(z => <option key={z.value} value={z.value}>{z.label}</option>)}
               </select>
               <div role="radiogroup" aria-label="Filter library by category" style={css('display:flex; flex-wrap:wrap; gap:6px; margin-top:11px;')}>
                 {categories.map((c, i) => (
@@ -986,7 +1089,7 @@ export default class App extends Component<Props, State> {
                       onKeyDown={e => { if (e.key === 'Enter') this.addLibraryItem() }} placeholder="Item name" aria-label="New item name" style={css(fieldStyle)} />
                     <div style={css('display:flex; gap:8px;')}>
                       <select className="eqi" value={this.state.fType} onChange={e => this.setState({ fType: e.target.value })} aria-label="Item type" style={css(fieldStyle + 'flex:1; min-width:0; cursor:pointer;')}>
-                        {['Weapon', 'Armor', 'Jewelry', 'Tradeskill', 'Container', 'Misc'].map(t => <option key={t} value={t} style={{ color: '#15171b' }}>{t}</option>)}
+                        {['Weapon', 'Armor', 'Jewelry', 'Tradeskill', 'Container', 'Misc'].map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                       <input className="eqi" value={this.state.fZone} onChange={e => this.setState({ fZone: e.target.value })}
                         onKeyDown={e => { if (e.key === 'Enter') this.addLibraryItem() }} placeholder="Zone (optional)" aria-label="Item zone" style={css(fieldStyle + 'flex:1; min-width:0;')} />
@@ -1151,13 +1254,21 @@ export default class App extends Component<Props, State> {
               <div style={css('display:flex; gap:16px; align-items:flex-start;')}>
                 <div style={css('flex:1; min-width:0;')}>
                   <div style={css('display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;')}>
-                    <span style={css('font-family:' + th.fu + '; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:' + th.muted + ';')}>filter.ini · Loot / Merge / Store / Sell</span>
+                    <span style={css('font-family:' + th.fu + '; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:' + th.muted + ';')}>Save as LF_&lt;Character&gt;_&lt;server&gt;.ini · 1 Store · 2 Loot · 3 Merge · 4 Sell</span>
                     <div style={css('display:flex; gap:8px;')}>
                       <button onClick={() => this.downloadIni()} style={css('font-family:' + th.fu + '; font-size:12.5px; font-weight:600; color:' + th.text + '; background:transparent; border:1px solid ' + th.border + '; border-radius:6px; padding:7px 16px; cursor:pointer;')}>Download .ini</button>
                       <button onClick={() => this.copy(this.buildIni(), 'ini')} style={css('font-family:' + th.fu + '; font-size:12.5px; font-weight:600; color:' + th.accentText + '; background:' + th.accent + '; border:none; border-radius:6px; padding:7px 16px; cursor:pointer;')}>{this.state.copied === 'ini' ? 'Copied!' : 'Copy INI'}</button>
                     </div>
                   </div>
                   <textarea className="eqs" readOnly value={this.buildIni()} style={css(taStyle)}></textarea>
+                  <div style={css('font-family:' + th.fu + '; font-size:12px; color:' + th.muted + '; margin-top:6px;')}>
+                    Drop the file in <span style={css('font-family:' + th.fm + ';')}>{this.UD_PATH}</span>
+                  </div>
+                  {this.unexportable().length > 0 && (
+                    <div style={css('font-family:' + th.fu + '; font-size:12px; color:' + th.muted + '; margin-top:6px;')}>
+                      {this.unexportable().length} item{this.unexportable().length === 1 ? '' : 's'} left out — no game item ID: {this.unexportable().slice(0, 5).map(r => r.name).join(', ')}{this.unexportable().length > 5 ? '…' : ''}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1169,13 +1280,16 @@ export default class App extends Component<Props, State> {
                     <label style={css('font-family:' + th.fu + '; font-size:12.5px; font-weight:600; color:' + th.text + '; background:transparent; border:1px solid ' + th.border + '; border-radius:6px; padding:7px 16px; cursor:pointer;')}>
                       Choose file…
                       <input type="file" accept=".ini,.txt" style={{ display: 'none' }}
-                        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) f.text().then(t => this.setState({ importText: t }, () => this.doImport())) }} />
+                        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) f.text().then(t => this.setState({ importText: t }, () => this.doImport(f.name))) }} />
                     </label>
                     <button onClick={() => this.doImport()} style={css('font-family:' + th.fu + '; font-size:12.5px; font-weight:600; color:' + th.accentText + '; background:' + th.accent + '; border:none; border-radius:6px; padding:7px 16px; cursor:pointer;')}>Load filter</button>
                   </div>
                 </div>
                 <textarea className="eqs eqi" value={this.state.importText} onChange={e => this.setState({ importText: e.target.value })}
-                  placeholder={'[Filter]\nName=My Loot Filter\n\n[Rules]\nGnoll Fang=Sell\nBlackburrow Gnoll Pelt=Store'} style={css(taStyle)}></textarea>
+                  placeholder={'#ITEM_ID^FILTER_ID^ICON_ID^ITEM_NAME\n13915^4^800^Gnoll Fang\n13026^1^556^Blackburrow Gnoll Pelt'} style={css(taStyle)}></textarea>
+                <div style={css('font-family:' + th.fu + '; font-size:12px; color:' + th.muted + '; margin-top:6px;')}>
+                  The game keeps your filters in <span style={css('font-family:' + th.fm + ';')}>{this.UD_PATH}</span>
+                </div>
               </div>
             )}
             {this.state.panel === 'share' && (
