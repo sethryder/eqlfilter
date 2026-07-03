@@ -1,24 +1,30 @@
 <?php
 // eqlfilter filter-submission drop box. The app fire-and-forgets a POST here
 // when an imported .ini contains items the shipped catalog doesn't know
-// (src/App.tsx maybeSubmitIni). Files pile up in ../submissions/ until you
+// (src/App.tsx maybeSubmitIni). Files pile up in the submissions dir until you
 // harvest them: scp them down, then
 //   node tools/merge-ini.mjs submissions/*.ini && npm run items:build
 //
-// Deploy: put this file at <site>/api/submit.php on the Forge box and add to
-// the site's nginx config, above the SPA catch-all:
+// Deploys via git with the rest of the repo (Forge release deploys) — nginx
+// runs it straight out of the `current` symlink. SUBMIT_DIR must sit OUTSIDE
+// the releases dir or Forge prunes it with old releases. Add to the site's
+// nginx config, above `location /`:
 //
 //   location = /api/submit-ini {
 //     client_max_body_size 128k;
 //     include fastcgi_params;
-//     fastcgi_param SCRIPT_FILENAME $realpath_root/api/submit.php;
-//     fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;   # match the box's PHP
+//     fastcgi_param SCRIPT_FILENAME $site_home/current/tools/server/submit.php;
+//     fastcgi_param SUBMIT_DIR      $site_home/submissions;
+//     fastcgi_pass unix:/var/run/php/php8.4-fpm-eqlfilter.sock;
 //   }
+//
+// (with `set $site_home /home/eqlfilter/eqlfilter.com;` near the top of the
+// server block — match the prefix of the config's `root` directive.)
 //
 // No auth by design (the client is a public web page); instead: size cap,
 // shape check, dedupe-by-content, and a total-files cap as a flood stop.
 
-$DIR = __DIR__ . '/../submissions';   // sibling of the web root, not inside it
+$DIR = $_SERVER['SUBMIT_DIR'] ?? __DIR__ . '/../../submissions';
 $MAX = 128 * 1024;
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit; }
