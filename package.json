@@ -11,7 +11,7 @@
     "items:import": "node tools/import-eqemu.mjs",
     "items:scrape": "node tools/build-eql-items.mjs > data/items.legends.json",
     "items:merge": "node tools/merge-ini.mjs",
-    "items:build": "node tools/build-catalog.mjs",
+    "items:build": "node tools/build-catalog.mjs && node tools/extract-icons.mjs",
     "icons:extract": "node tools/extract-icons.mjs",
     "shot": "node tools/shot.mjs"
   },

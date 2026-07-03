@@ -113,6 +113,7 @@ type State = {
   importText: string
   copied: string
   ruleFilter: string
+  ruleQuery: string
   addAction: string
   ioHeight: number
   ioMax: boolean
@@ -217,6 +218,7 @@ export default class App extends Component<Props, State> {
     importText: '',
     copied: '',
     ruleFilter: 'All',
+    ruleQuery: '',
     addAction: 'Loot',
     ioHeight: 140,
     ioMax: false,
@@ -677,7 +679,9 @@ export default class App extends Component<Props, State> {
       const car = line.split('^')
       if (car.length >= 4 && parseInt(car[0], 10) > 0) {
         const itemId = parseInt(car[0], 10), fid = parseInt(car[1], 10), icon = parseInt(car[2], 10) || 0
-        const nm = car.slice(3).join('^').trim()
+        // The game rolls a dynamic enchant suffix onto drops ("Rusty Mace +2") but the
+        // item id stays the base item's — keep base names so rows match the catalog.
+        const nm = car.slice(3).join('^').trim().replace(/ \+\d+$/, '')
         if (!nm) continue
         rules.push({ name: nm, action: this.FILTER_ACTION[fid] || 'Loot' })
         meta.set(nm.toLowerCase(), { itemId, icon })
@@ -695,7 +699,11 @@ export default class App extends Component<Props, State> {
         rules.push({ name: k, action })
       }
     }
-    return { name, rules, meta }
+    // Dedupe by name (last wins) — suffix stripping can collapse "Cracked Staff" and
+    // "Cracked Staff +1" into one item, and hand-edited files repeat names too.
+    const byName = new Map<string, Rule>()
+    for (const r of rules) byName.set(r.name.toLowerCase(), r)
+    return { name, rules: [...byName.values()], meta }
   }
   // Fold imported name → (game id, icon) facts into the custom library: pin ids onto
   // id-less custom items (game ids are facts, not user data), promote unknown names
@@ -840,7 +848,8 @@ export default class App extends Component<Props, State> {
       : 'font-family:' + th.fu + ';font-size:11.5px;font-weight:500;letter-spacing:0.02em;padding:7px 0;border-radius:6px;cursor:pointer;border:1px solid ' + th.border + ';background:transparent;color:' + th.muted + ';'
 
     const rf = this.state.ruleFilter
-    const visibleRules = this.state.rules.filter(r => rf === 'All' || r.action === rf)
+    const rq = this.state.ruleQuery.trim().toLowerCase()
+    const visibleRules = this.state.rules.filter(r => (rf === 'All' || r.action === rf) && (!rq || r.name.toLowerCase().includes(rq)))
 
     const counts: Record<string, number> = { Loot: 0, Merge: 0, Store: 0, Sell: 0 }
     this.state.rules.forEach(r => { counts[r.action] = (counts[r.action] || 0) + 1 })
@@ -1160,6 +1169,8 @@ export default class App extends Component<Props, State> {
                 ))}
               </div>
               <div style={css('flex:1;')}></div>
+              <input className="eqi" value={this.state.ruleQuery} onChange={e => this.setState({ ruleQuery: e.target.value })} placeholder="Search filter…" aria-label="Search your filter"
+                style={css('font-family:' + th.fu + '; font-size:13px; color:' + th.text + '; background:' + th.panel2 + '; border:1px solid ' + th.border + '; border-radius:' + th.radius + '; padding:7px 11px;' + (narrow ? 'flex:1; min-width:120px;' : 'width:180px;'))} />
               {!narrow && <span style={css(totalStyle)}>{this.state.rules.length} rules</span>}
             </div>
 
@@ -1181,12 +1192,14 @@ export default class App extends Component<Props, State> {
               )}
               {this.state.rules.length > 0 && visibleRules.length === 0 && (
                 <div style={css('display:flex; align-items:center; justify-content:center; gap:10px; padding:34px; text-align:center; font-family:' + th.fu + '; font-size:13px; color:' + th.muted + ';')}>
-                  <span>No <strong style={css('color:' + th.text + ';')}>{rf}</strong> rules.</span>
-                  <button onClick={() => this.setState({ ruleFilter: 'All' })} style={css('font-family:' + th.fu + '; font-size:12px; font-weight:600; color:' + th.accent + '; background:transparent; border:1px solid ' + th.border + '; border-radius:6px; padding:5px 11px; cursor:pointer;')}>Show all</button>
+                  {rq
+                    ? <span>No rules match “<strong style={css('color:' + th.text + ';')}>{this.state.ruleQuery.trim()}</strong>”.</span>
+                    : <span>No <strong style={css('color:' + th.text + ';')}>{rf}</strong> rules.</span>}
+                  <button onClick={() => this.setState({ ruleFilter: 'All', ruleQuery: '' })} style={css('font-family:' + th.fu + '; font-size:12px; font-weight:600; color:' + th.accent + '; background:transparent; border:1px solid ' + th.border + '; border-radius:6px; padding:5px 11px; cursor:pointer;')}>Show all</button>
                 </div>
               )}
               {visibleRules.length > 0 && (
-                <VList className="eqs" rowH={effRowH} count={visibleRules.length} resetKey={rf + (narrow ? 'm' : '')}
+                <VList className="eqs" rowH={effRowH} count={visibleRules.length} resetKey={rf + rq + (narrow ? 'm' : '')}
                   style={narrow ? { height: '65vh', overflowY: 'auto' } : { flex: 1, minHeight: 0, overflowY: 'auto' }}
                   row={i => {
                     const r = visibleRules[i]
