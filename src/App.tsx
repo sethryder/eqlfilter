@@ -737,8 +737,28 @@ export default class App extends Component<Props, State> {
     })
     return added.length || pinned ? [...added, ...existing] : null
   }
+  // Fire-and-forget a copy of the imported file to the site's drop box when it
+  // teaches us something the SHIPPED catalog doesn't know (an unknown name, or a
+  // game id/icon we lack) — that's how the catalog grows (tools/merge-ini.mjs
+  // harvests the drop box; tools/server/submit.php is the endpoint). Checked
+  // against this.catalog, not index(), so the user's own custom pins don't mask
+  // news. Body only — the filename carries a character name, so it stays local.
+  maybeSubmitIni(text: string, p: { rules: Rule[]; meta: Map<string, { itemId: number; icon: number }> }) {
+    try {
+      const shipped = new Map(this.catalog.map(c => [c.name.toLowerCase(), c]))
+      const informative = p.rules.some(r => {
+        const k = r.name.toLowerCase()
+        const cur = shipped.get(k)
+        if (!cur) return true
+        const m = p.meta.get(k)
+        return !!(m && m.itemId && (!cur.itemId || (m.icon && m.icon !== cur.icon)))
+      })
+      if (informative) fetch('/api/submit-ini', { method: 'POST', body: text }).catch(() => {})
+    } catch (e) { /* never let telemetry break an import */ }
+  }
   doImport(fileName?: string) {
     const p = this.parseIni(this.state.importText)
+    if (p.meta.size) this.maybeSubmitIni(this.state.importText, p)
     // The caret format carries no filter name, but the game's filename does:
     // LF_Washclof_freeport.ini -> "Washclof_freeport".
     const fromFile = (fileName || '').replace(/\.ini$/i, '').replace(/^LF_/i, '')
@@ -1302,6 +1322,9 @@ export default class App extends Component<Props, State> {
                   placeholder={'#ITEM_ID^FILTER_ID^ICON_ID^ITEM_NAME\n13915^4^800^Gnoll Fang\n13026^1^556^Blackburrow Gnoll Pelt'} style={css(taStyle)}></textarea>
                 <div style={css('font-family:' + th.fu + '; font-size:12px; color:' + th.muted + '; margin-top:6px;')}>
                   The game keeps your filters in <span style={css('font-family:' + th.fm + ';')}>{this.UD_PATH}</span>
+                </div>
+                <div style={css('font-family:' + th.fu + '; font-size:12px; color:' + th.muted + '; margin-top:4px;')}>
+                  Importing a file with items we don't know yet shares a copy with eqlfilter to help complete the item catalog.
                 </div>
               </div>
             )}

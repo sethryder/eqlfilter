@@ -32,11 +32,13 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 // `addIfClassicZones`: the wiki spans all expansions, but a wiki-only item whose drop
 // zones are ALL classic zones is a Legends-original classic drop (e.g. the Befallen set)
 // that PEQ can't know about — let those in. Zoneless wiki items stay out (era unknown).
+// `addIfItemId`: an ini-harvested custom entry with a game item id is confirmed live
+// in Legends (the id came from a real in-game filter file) — let those in too.
 const SOURCES = [
   { path: 'data/items.classic.json', additive: true },
   { path: 'data/items.legends.json', additive: false, addIfClassicZones: true },
   { path: 'data/items.eql.json', additive: true },
-  { path: 'data/items.custom.json', additive: false },
+  { path: 'data/items.custom.json', additive: false, addIfItemId: true },
 ]
 const OUT = 'public/eql-items.json'
 
@@ -58,7 +60,7 @@ function norm(it) {
 const byName = new Map()
 const stats = []
 let classicZones = null // zone set of the classic base; ready once the first layer merges
-for (const { path: src, additive, addIfClassicZones } of SOURCES) {
+for (const { path: src, additive, addIfClassicZones, addIfItemId } of SOURCES) {
   if (!existsSync(src)) { stats.push({ src, added: 0, overrode: 0, skipped: true }); continue }
   if (!classicZones && byName.size) classicZones = new Set([...byName.values()].flatMap(i => i.zones))
   const arr = JSON.parse(readFileSync(src, 'utf8'))
@@ -70,9 +72,10 @@ for (const { path: src, additive, addIfClassicZones } of SOURCES) {
     const prev = byName.get(key)
     if (!prev) {
       // Enrich-only layers never introduce names — that's how non-classic items stay out —
-      // unless every one of the item's zones is classic (see addIfClassicZones above).
+      // unless the item is provably in Legends: all its zones are classic zones
+      // (addIfClassicZones) or it carries a game item id (addIfItemId).
       const classicOnly = addIfClassicZones && it.zones.length && it.zones.every(z => classicZones.has(z))
-      if (!additive && !classicOnly) { dropped++; continue }
+      if (!additive && !classicOnly && !(addIfItemId && it.itemId > 0)) { dropped++; continue }
       byName.set(key, it); added++; continue
     }
     byName.set(key, {
