@@ -29,9 +29,12 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 
 // `additive` layers introduce new item names; enrich-only layers only override names the
 // classic base already has. Keep classic-only so the catalog stays classic (0 expansions).
+// `addIfClassicZones`: the wiki spans all expansions, but a wiki-only item whose drop
+// zones are ALL classic zones is a Legends-original classic drop (e.g. the Befallen set)
+// that PEQ can't know about — let those in. Zoneless wiki items stay out (era unknown).
 const SOURCES = [
   { path: 'data/items.classic.json', additive: true },
-  { path: 'data/items.legends.json', additive: false },
+  { path: 'data/items.legends.json', additive: false, addIfClassicZones: true },
   { path: 'data/items.eql.json', additive: true },
   { path: 'data/items.custom.json', additive: false },
 ]
@@ -54,8 +57,10 @@ function norm(it) {
 
 const byName = new Map()
 const stats = []
-for (const { path: src, additive } of SOURCES) {
+let classicZones = null // zone set of the classic base; ready once the first layer merges
+for (const { path: src, additive, addIfClassicZones } of SOURCES) {
   if (!existsSync(src)) { stats.push({ src, added: 0, overrode: 0, skipped: true }); continue }
+  if (!classicZones && byName.size) classicZones = new Set([...byName.values()].flatMap(i => i.zones))
   const arr = JSON.parse(readFileSync(src, 'utf8'))
   let added = 0, overrode = 0, dropped = 0
   for (const raw of arr) {
@@ -64,8 +69,10 @@ for (const { path: src, additive } of SOURCES) {
     const key = it.name.toLowerCase()
     const prev = byName.get(key)
     if (!prev) {
-      // Enrich-only layers never introduce names — that's how non-classic items stay out.
-      if (!additive) { dropped++; continue }
+      // Enrich-only layers never introduce names — that's how non-classic items stay out —
+      // unless every one of the item's zones is classic (see addIfClassicZones above).
+      const classicOnly = addIfClassicZones && it.zones.length && it.zones.every(z => classicZones.has(z))
+      if (!additive && !classicOnly) { dropped++; continue }
       byName.set(key, it); added++; continue
     }
     byName.set(key, {
