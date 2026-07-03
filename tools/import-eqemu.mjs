@@ -16,6 +16,12 @@ import { readFileSync, writeFileSync } from 'node:fs'
 const IN = process.argv[2] || 'eq_classic.csv'
 const OUT = 'data/items.classic.json'
 
+// Legends renamed a few items vs PEQ; the in-game filter INI (docs/*.ini) is ground
+// truth for names, and the catalog matches rules by exact name. Keyed by item id.
+const LEGENDS_RENAMES = new Map([
+  [13262, 'Giant Scarab Egg Sac'], // PEQ: "...Egg Sack"
+])
+
 // EQEMU item_type -> our category. Anything unlisted falls through to Misc.
 const WEAPON = new Set(['1H Slashing', '1H Piercing', '1H Blunt', '2H Slashing', '2H Blunt', '2H Piercing', 'Hand to Hand', 'Bow', 'Throwing', 'Arrow'])
 const ARMOR = new Set(['Armor', 'Shield', 'Mask'])
@@ -65,8 +71,9 @@ const FLAG_COLS = [['no_drop', 'NO DROP'], ['lore', 'LORE'], ['magic', 'MAGIC'],
 // Dedupe by name; merge the zone lists if a name appears more than once.
 const byName = new Map()
 for (const r of rows) {
-  const name = (r[ci.name] || '').trim()
+  let name = (r[ci.name] || '').trim()
   if (!name) continue
+  name = LEGENDS_RENAMES.get(parseInt(r[ci.id], 10)) || name
   const itemType = (r[ci.type] || '').trim()
   const type = mapType(itemType)
   let slot = (r[ci.slot] || '').trim()

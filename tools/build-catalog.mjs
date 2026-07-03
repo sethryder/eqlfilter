@@ -13,13 +13,15 @@
 // catalog needs to include wiki/custom-only names.
 //
 //   data/items.classic.json  — EQEMU classic base        (items:import)  [additive]
-//   data/items.eql.json      — hand-curated Legends-only items (motes etc.) [additive]
 //   data/items.legends.json  — EQL Wiki / Legends items   (items:scrape)  [enrich-only]
+//   data/items.eql.json      — hand-curated Legends-only items (motes etc.) [additive]
 //   data/items.custom.json   — names from submitted INIs  (items:merge)   [enrich-only]
 //
 // items.eql.json exists because Legends-original items (the Motes of Potential) aren't
 // in PEQ, and the wiki has no item-id field — ids/icons there come from real in-game
-// filter files as players share them (itemId 0 = not yet known, unexportable).
+// filter files as players share them (itemId 0 = not yet known, unexportable). It runs
+// AFTER the wiki layer so its game-confirmed ids/icons win over scraped values (the
+// wiki carries bogus icon ids, e.g. Skeletal Rod 84216 vs the real 905).
 //
 // Run this after refreshing any layer. No npm deps.
 
@@ -29,8 +31,8 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 // classic base already has. Keep classic-only so the catalog stays classic (0 expansions).
 const SOURCES = [
   { path: 'data/items.classic.json', additive: true },
-  { path: 'data/items.eql.json', additive: true },
   { path: 'data/items.legends.json', additive: false },
+  { path: 'data/items.eql.json', additive: true },
   { path: 'data/items.custom.json', additive: false },
 ]
 const OUT = 'public/eql-items.json'
