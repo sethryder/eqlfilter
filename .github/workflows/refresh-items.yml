@@ -1,0 +1,35 @@
+# Weekly EQL wiki item refresh. Scrapes the wiki, rebuilds the catalog, and opens
+# (or updates) a PR only when the data actually changed. Icon sheet extraction is
+# NOT run here — it needs the local EQ client's .dds files; if a PR references a
+# new sheet, run `npm run icons:extract` locally on the branch.
+name: Refresh items from EQL wiki
+
+on:
+  schedule:
+    - cron: '0 9 * * 1' # Mondays 09:00 UTC; make it daily with '0 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scrape wiki
+        run: npm run items:scrape
+      - name: Sanity-check scrape # a truncated/empty scrape must fail, not become a PR
+        run: node -e "const n=JSON.parse(require('node:fs').readFileSync('data/items.legends.json')).length; console.log(n+' items'); if(n<10000) process.exit(1)"
+      - name: Rebuild catalog
+        run: node tools/build-catalog.mjs
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: auto/wiki-item-refresh
+          commit-message: Refresh items from the EQL wiki (automated)
+          title: 'Automated EQL wiki item refresh'
+          body: |
+            Weekly scrape of https://eqlwiki.com plus catalog rebuild.
+            Review the `public/eql-items.json` diff before merging; if the build
+            log mentions missing icon sheets, run `npm run icons:extract` locally.
