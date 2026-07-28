@@ -54,6 +54,7 @@ const ZONE_ALIAS = {
   'Lair of the Splitpaw': 'The Lair of the Splitpaw',
   'Cazic Thule': 'Accursed Temple of CazicThule',
   'Cazic-Thule': 'Accursed Temple of CazicThule',
+  'Temple of Cazic-Thule': 'Accursed Temple of CazicThule',
   'Plane of Fear': 'The Plane of Fear',
   'Plane of Hate': 'The Plane of Hate',
   'Plane of Sky': 'The Plane of Sky',
