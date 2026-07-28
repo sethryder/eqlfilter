@@ -42,14 +42,74 @@ const SOURCES = [
 ]
 const OUT = 'public/eql-items.json'
 
+// Wiki zone names -> the classic base's long-form names (PEQ zone table). Without this
+// the addIfClassicZones gate drops real classic drops (wiki says "Splitpaw Lair", base
+// says "The Lair of the Splitpaw") and wiki-filled zones leak inconsistent names into
+// the app's zone list. Also folds the classic base's own duplicate spellings (PEQ ships
+// e.g. "Plane of Hate" and "The Plane of Hate" as separate rows for the same zone).
+// ponytail: hand-curated for classic-era zones only; extend if a later era ever ships.
+const ZONE_ALIAS = {
+  'Splitpaw': 'The Lair of the Splitpaw',
+  'Splitpaw Lair': 'The Lair of the Splitpaw',
+  'Lair of the Splitpaw': 'The Lair of the Splitpaw',
+  'Cazic Thule': 'Accursed Temple of CazicThule',
+  'Cazic-Thule': 'Accursed Temple of CazicThule',
+  'Temple of Cazic-Thule': 'Accursed Temple of CazicThule',
+  'Plane of Fear': 'The Plane of Fear',
+  'Plane of Hate': 'The Plane of Hate',
+  'Plane of Sky': 'The Plane of Sky',
+  'Permafrost': 'The Permafrost Caverns',
+  'Nektulos Forest': 'The Nektulos Forest',
+  'Rathe Mountains': 'The Rathe Mountains',
+  'Everfrost': 'Everfrost Peaks',
+  'Estate of Unrest': 'The Estate of Unrest',
+  'Unrest': 'The Estate of Unrest',
+  'Mistmoore Castle': 'The Castle of Mistmoore',
+  'Castle Mistmoore': 'The Castle of Mistmoore',
+  'Lower Guk': 'The Ruins of Old Guk',
+  'Upper Guk': 'The City of Guk',
+  'Greater Faydark': 'The Greater Faydark',
+  'Lesser Faydark': 'The Lesser Faydark',
+  'Lavastorm': 'The Lavastorm Mountains',
+  'Lavastorm Mountains': 'The Lavastorm Mountains',
+  'North Karana': 'The Northern Plains of Karana',
+  'Northern Karana': 'The Northern Plains of Karana',
+  'Northern Plains of Karana': 'The Northern Plains of Karana',
+  'South Karana': 'The Southern Plains of Karana',
+  'Southern Karana': 'The Southern Plains of Karana',
+  'Southern Plains of Karana': 'The Southern Plains of Karana',
+  'East Karana': 'Eastern Plains of Karana',
+  'Eastern Karana': 'Eastern Plains of Karana',
+  'West Karana': 'The Western Plains of Karana',
+  'Western Karana': 'The Western Plains of Karana',
+  'Western Plains of Karana': 'The Western Plains of Karana',
+  'Qeynos Hills': 'The Qeynos Hills',
+  'Qeynos Aqueducts': 'The Qeynos Aqueduct System',
+  'Surefall Glade': 'The Surefall Glade',
+  'Highpass Keep': 'High Keep',
+  "Beholder's Maze": 'Gorge of King Xorbb',
+  'Runnyeye': 'The Liberated Citadel of Runnyeye',
+  'Clan RunnyEye': 'The Liberated Citadel of Runnyeye',
+  'Clan Runnyeye': 'The Liberated Citadel of Runnyeye',
+  'RunnyEye Citadel': 'The Liberated Citadel of Runnyeye',
+  'Oasis': 'Oasis of Marr',
+  'Neriak Foreign Quarter': 'Neriak - Foreign Quarter',
+  'Neriak Third Gate': 'Neriak - 3rd Gate',
+  'Kerra Island': 'Kerra Isle',
+}
+
 // Normalize either the zones[] shape or an older single `zone` string, and drop
-// the legacy "—" empty-slot placeholder.
+// the legacy "—" empty-slot placeholder. Zones: drop scraper junk (File:/Category:
+// links the wiki sometimes puts in dropsfrom), map to canonical classic names, dedupe.
+function normZones(zs) {
+  return [...new Set(zs.filter(z => z && !/^(file|category):/i.test(z)).map(z => ZONE_ALIAS[z] || z))]
+}
 function norm(it) {
   return {
     name: (it.name || '').trim(),
     type: it.type || 'Misc',
     slot: it.slot && it.slot !== '—' ? it.slot : '',
-    zones: Array.isArray(it.zones) ? it.zones.filter(Boolean) : (it.zone ? [it.zone] : []),
+    zones: normZones(Array.isArray(it.zones) ? it.zones : (it.zone ? [it.zone] : [])),
     flags: Array.isArray(it.flags) ? it.flags : [],
     icon: it.icon || 0,
     itemId: it.itemId || 0, // game item id — the in-game filter INI keys rows on it
