@@ -13,9 +13,9 @@
 import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 
-const OUT = process.env.SHOT_DIR ||
-  '/tmp/claude-1000/-home-seth-dev-eqlfilter/86237bd5-b3df-4c55-a104-a835c575cfe0/scratchpad'
+const OUT = process.env.SHOT_DIR || `${tmpdir()}/eqlfilter-shots`
 const viewports = (process.argv.slice(2).length ? process.argv.slice(2) : ['1440x900', '1280x720', '390x844'])
   .map(s => { const [w, h] = s.split('x').map(Number); return { w, h, name: s } })
 

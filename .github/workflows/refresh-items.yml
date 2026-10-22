@@ -1,0 +1,50 @@
+name: Refresh items from EQL wiki
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 9 * * 1'   # Mondays 09:00 UTC
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: refresh-items
+  cancel-in-progress: true
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180   # ~10,600 wiki requests at ~8 req/s plus runner latency
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # The tools use only Node built-ins, so no npm ci.
+      - run: node tools/build-eql-items.mjs > /tmp/items.legends.json
+      - name: Commit to auto/wiki-refresh and open or update the PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BR: auto/wiki-refresh
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          # Reuse an open PR's branch so icon sheets pushed to it by hand survive a re-run.
+          if [ "$(gh pr list --head "$BR" --state open --json number --jq length)" != 0 ]; then
+            git fetch origin "$BR" && git checkout "$BR"; EXISTING=1
+          else
+            git checkout -B "$BR"; EXISTING=
+          fi
+          cp /tmp/items.legends.json data/items.legends.json
+          node tools/build-catalog.mjs
+          # No game client on the runner; pointed at a missing dir the script only reports sheets lacking a PNG.
+          REPORT=$(node tools/extract-icons.mjs /nonexistent)
+          git add data/items.legends.json public/eql-items.json
+          git diff --cached --quiet && { echo "No changes"; exit 0; }
+          git commit -m "Refresh items from the EQL wiki"
+          BODY=$(printf 'Automated scrape (%s).\n\nIcon check:\n```\n%s\n```\nIf sheets are missing, run `npm run icons:extract` locally and push to this branch before merging.' "$(date -u +%F)" "$REPORT")
+          if [ -n "$EXISTING" ]; then
+            git push origin "$BR"
+            gh pr edit "$BR" --body "$BODY"
+          else
+            git push -f origin "$BR"
+            gh pr create --base main --head "$BR" --title "Refresh items from the EQL wiki" --body "$BODY"
+          fi

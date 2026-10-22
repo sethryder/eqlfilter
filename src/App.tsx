@@ -737,28 +737,8 @@ export default class App extends Component<Props, State> {
     })
     return added.length || pinned ? [...added, ...existing] : null
   }
-  // Fire-and-forget a copy of the imported file to the site's drop box when it
-  // teaches us something the SHIPPED catalog doesn't know (an unknown name, or a
-  // game id/icon we lack) — that's how the catalog grows (tools/merge-ini.mjs
-  // harvests the drop box; tools/server/submit.php is the endpoint). Checked
-  // against this.catalog, not index(), so the user's own custom pins don't mask
-  // news. Body only — the filename carries a character name, so it stays local.
-  maybeSubmitIni(text: string, p: { rules: Rule[]; meta: Map<string, { itemId: number; icon: number }> }) {
-    try {
-      const shipped = new Map(this.catalog.map(c => [c.name.toLowerCase(), c]))
-      const informative = p.rules.some(r => {
-        const k = r.name.toLowerCase()
-        const cur = shipped.get(k)
-        if (!cur) return true
-        const m = p.meta.get(k)
-        return !!(m && m.itemId && (!cur.itemId || (m.icon && m.icon !== cur.icon)))
-      })
-      if (informative) fetch('/api/submit-ini', { method: 'POST', body: text }).catch(() => {})
-    } catch (e) { /* never let telemetry break an import */ }
-  }
   doImport(fileName?: string) {
     const p = this.parseIni(this.state.importText)
-    if (p.meta.size) this.maybeSubmitIni(this.state.importText, p)
     // The caret format carries no filter name, but the game's filename does:
     // LF_Washclof_freeport.ini -> "Washclof_freeport".
     const fromFile = (fileName || '').replace(/\.ini$/i, '').replace(/^LF_/i, '')
@@ -1349,7 +1329,7 @@ export default class App extends Component<Props, State> {
 
         {/* SITE FOOTER */}
         <div style={css('flex:none; display:flex; align-items:center; gap:18px; flex-wrap:wrap; padding:11px 22px; border-top:1px solid ' + th.border + '; background:' + th.bg + ';')}>
-          <span style={css('font-family:' + th.fu + '; font-size:11.5px; color:' + th.muted + '; white-space:nowrap;')}>© {year} EQLFilter · eqlfilter.com</span>
+          <span style={css('font-family:' + th.fu + '; font-size:11.5px; color:' + th.muted + '; white-space:nowrap;')}>© {year} EQLFilter · eqlfilter.washclof.com</span>
           <span style={css('font-family:' + th.fu + '; font-size:11.5px; line-height:1.5; color:' + th.muted + '; flex:1; min-width:240px; opacity:0.85;')}>EverQuest is a registered trademark of Daybreak Game Company LLC. EQLFilter is an unofficial fan project, not affiliated with or endorsed by Daybreak.</span>
           <div style={css('display:flex; align-items:center; gap:7px; flex-wrap:wrap;')}>
             <span style={css('font-family:' + th.fu + '; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:' + th.muted + '; white-space:nowrap;')}>More projects</span>

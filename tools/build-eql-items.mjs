@@ -23,7 +23,7 @@
 // parameter names. Everything else works as-is.
 
 const API = "https://eqlwiki.com/api.php";
-const UA = "EQLFilter-item-builder/1.0 (https://eqlfilter.com)";
+const UA = "EQLFilter-item-builder/1.0 (https://eqlfilter.washclof.com)";
 
 // Weapon-skill categories on an item page mean it's a Weapon. (Confirmed against
 // the live wiki: pages carry [[Category:1H Slashing]] etc.)
@@ -184,6 +184,7 @@ async function main() {
 
   process.stderr.write(`Fetching details for ${workList.length} items...\n`);
   const out = [];
+  const failed = [];
   for (let i = 0; i < workList.length; i++) {
     const title = workList[i];
     try {
@@ -191,12 +192,18 @@ async function main() {
       item.zones.sort();
       out.push(item);
     } catch (e) {
-      out.push({ name: title, type: "Misc", slot: "", zones: [], flags: [] });
+      // Skip rather than emit a stub: a "Misc" stub would override the item's real
+      // type in build-catalog, so a flaky wiki day would silently demote items.
+      failed.push(title);
     }
     if (i % 25 === 0) process.stderr.write(`  ${i}/${workList.length}\r`);
     await sleep(120); // ~8 req/s — keep it gentle on the wiki
   }
-  process.stderr.write(`\nDone. ${out.length} items.\n`);
+  process.stderr.write(`\nDone. ${out.length} items, ${failed.length} failed.\n`);
+  if (failed.length) process.stderr.write(`  failed: ${failed.join(", ")}\n`);
+  // ponytail: a handful of failures just drops those names from the enrich layer for
+  // this run; many means the wiki was unhealthy, so fail instead of shipping a thin layer.
+  if (failed.length > 20) process.exit(1);
 
   out.sort((a, b) => a.name.localeCompare(b.name));
   console.log(JSON.stringify(out));

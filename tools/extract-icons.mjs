@@ -28,11 +28,11 @@ for (const it of items) if (it.icon >= 500) sheets.add(Math.floor((it.icon - 500
 mkdirSync(OUT, { recursive: true })
 let ok = 0, skipped = 0, missing = []
 for (const n of [...sheets].sort((a, b) => a - b)) {
-  const dds = `${SRC}/dragitem${n}.dds`
-  if (!existsSync(dds)) { missing.push(n); continue }
   // Re-converting rewrites identical pixels with different bytes (git churn on every
   // items:build). ponytail: skip existing; delete a png (or the dir) to force a redo.
   if (existsSync(`${OUT}/dragitem${n}.png`)) { skipped++; continue }
+  const dds = `${SRC}/dragitem${n}.dds`
+  if (!existsSync(dds)) { missing.push(n); continue }
   execFileSync('magick', [dds, `${OUT}/dragitem${n}.png`])
   ok++
 }

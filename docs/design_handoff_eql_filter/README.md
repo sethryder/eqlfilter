@@ -1,7 +1,7 @@
 # Handoff: EQLFilter — EverQuest Legends Loot Filter Builder
 
 ## Overview
-EQLFilter (eqlfilter.com) is a web app for building, saving, and sharing **loot filters** for the game *EverQuest Legends*. EQL lets players automate item handling — Loot, Merge, Store, or Sell — per item, stored in an INI file. This app gives players a visual builder: search a catalog of in-game items, assign one action to each, and export the result as an INI, a shareable link, or save it locally to switch between multiple named filters.
+EQLFilter (eqlfilter.washclof.com) is a web app for building, saving, and sharing **loot filters** for the game *EverQuest Legends*. EQL lets players automate item handling — Loot, Merge, Store, or Sell — per item, stored in an INI file. This app gives players a visual builder: search a catalog of in-game items, assign one action to each, and export the result as an INI, a shareable link, or save it locally to switch between multiple named filters.
 
 The single-screen app is split into three regions:
 - **Item Library** (left) — searchable, filterable catalog; click to add items.
@@ -91,7 +91,7 @@ A bordered panel, flex column.
 
 ### Site Footer
 Flex row, wrap, `padding:11px 22px`, top border, `--bg` background:
-- Copyright: `© <year> EQLFilter · eqlfilter.com` (11.5px muted).
+- Copyright: `© <year> EQLFilter · eqlfilter.washclof.com` (11.5px muted).
 - Trademark notice (11.5px muted, flex:1, min-width 240px): *"EverQuest is a registered trademark of Daybreak Game Company LLC. EQLFilter is an unofficial fan project, not affiliated with or endorsed by Daybreak."*
 - "MORE PROJECTS" label + project link pills. Currently one: **EQNTA** → `https://eqnta.com` (title "Norrath Transit Authority"). Pills: `--panel` bg, `--border` outline, radius 20px, accent dot; hover = accent border + accent text.
 
