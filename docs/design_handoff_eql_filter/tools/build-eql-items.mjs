@@ -22,7 +22,7 @@
 // parameter names. Everything else works as-is.
 
 const API = "https://eqlwiki.com/api.php";
-const UA = "EQLFilter-item-builder/1.0 (https://eqlfilter.com)";
+const UA = "EQLFilter-item-builder/1.0 (https://eqlfilter.washclof.com)";
 
 // Map a wiki type-subcategory -> the `type` bucket the app uses.
 // Add/adjust as you discover the wiki's real subcategory names.

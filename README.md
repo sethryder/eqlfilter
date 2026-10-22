@@ -19,8 +19,14 @@ npm run shot       # screenshot dist/ at desktop/short/mobile viewports (Playwri
 
 Pushes to `main` build and deploy via `.github/workflows/pages.yml`. Nothing to do by hand.
 
-One-time setup: Pages source set to "GitHub Actions" in repo settings; `public/CNAME` pins the
-custom domain; DNS `CNAME eqlfilter.washclof.com -> sethryder.github.io`; "Enforce HTTPS" on.
+One-time setup (a `CNAME` file is ignored for Actions-based deploys, so the domain lives in repo settings):
+
+```sh
+gh api -X POST repos/sethryder/eqlfilter/pages -f build_type=workflow        # enable, source = Actions
+gh api -X PUT  repos/sethryder/eqlfilter/pages -f cname=eqlfilter.washclof.com  # custom domain
+```
+
+DNS: `CNAME eqlfilter.washclof.com -> sethryder.github.io`, then turn on "Enforce HTTPS" in Settings → Pages.
 
 Pages serves everything with a fixed 10-minute `Cache-Control`. That is fine: Vite fingerprints
 `/assets/*` so a new build never collides with an old filename, and `index.html` / `eql-items.json`
