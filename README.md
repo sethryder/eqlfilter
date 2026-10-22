@@ -45,6 +45,11 @@ layers span all expansions, and adding them would reintroduce non-classic conten
 
 Workflow: refresh a layer (import / scrape / merge), then `npm run items:build` to rebuild the catalog.
 
+`.github/workflows/refresh-items.yml` runs the scrape + catalog build weekly (or on demand from the Actions
+tab) and opens a PR on `auto/wiki-refresh` when anything changed. Icons can't be extracted on the runner, so
+the PR body lists any sheets missing from `public/icons/`; run `npm run icons:extract` locally and push to
+the branch before merging.
+
 - `items:import` maps EQEMU's ~35 item types to the 6 categories and splits pipe-delimited zones (no flags in that source). The `eq_classic.csv` it reads is itself extracted from the ProjectEQ DB dump — see `docs/building-eq_classic-csv.md` to regenerate it.
 - `items:scrape` (`tools/build-eql-items.mjs`) hits the EQL Wiki MediaWiki API and parses each item page's
   `{{Itempage}}` template: statsblock → slot/flags (handles "NO TRADE"), `[[Category:…]]` → type. Zones come

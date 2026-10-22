@@ -1,0 +1,46 @@
+name: Refresh items from EQL wiki
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 9 * * 1'   # Mondays 09:00 UTC
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: refresh-items
+  cancel-in-progress: true
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60   # full scrape is ~20 min at ~8 req/s
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run items:scrape
+      - run: node tools/build-catalog.mjs
+      # No game client on the runner, so icons can't be extracted here. Point the
+      # script at a dir that doesn't exist: it only reports which sheets are missing.
+      - id: icons
+        run: |
+          echo 'report<<EOF' >> "$GITHUB_OUTPUT"
+          node tools/extract-icons.mjs /nonexistent >> "$GITHUB_OUTPUT"
+          echo 'EOF' >> "$GITHUB_OUTPUT"
+      - name: Open PR if anything changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git add data/items.legends.json public/eql-items.json
+          git diff --cached --quiet && { echo "No changes"; exit 0; }
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git checkout -B auto/wiki-refresh
+          git commit -m "Refresh items from the EQL wiki"
+          git push -f origin auto/wiki-refresh
+          gh pr create --base main --head auto/wiki-refresh \
+            --title "Refresh items from the EQL wiki" \
+            --body "$(printf 'Automated scrape (%s).\n\nIcon check:\n```\n%s\n```\nIf sheets are missing, run `npm run icons:extract` locally and push to this branch before merging.' "$(date -u +%F)" "${{ steps.icons.outputs.report }}")" \
+            || echo "PR already open; branch updated."
