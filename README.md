@@ -1,7 +1,7 @@
 # EQLFilter
 
 Loot filter builder for *EverQuest Legends*. Single-screen React app, fully client-side
-(localStorage + base64 share links) — no backend. Design spec: `docs/design_handoff_eql_filter/README.md`.
+(localStorage + base64 share links) — no backend, hosted on GitHub Pages. Design spec: `docs/design_handoff_eql_filter/README.md`.
 
 ## Develop
 
@@ -12,73 +12,15 @@ npm run build      # -> dist/  (static, deploy anywhere)
 npm run typecheck  # tsc, optional; build doesn't typecheck
 ```
 
-## Deploy (Laravel Forge)
+## Deploy (GitHub Pages)
 
-It's a static site — no PHP process. Point a Forge **static** site at `dist/`, or build on the
-server and serve `dist/` with nginx.
+Pushes to `main` build and deploy via `.github/workflows/pages.yml` (Pages source must be set to
+"GitHub Actions" in repo settings). `public/CNAME` pins the custom domain `eqlfilter.washclof.com`;
+point that hostname at `sethryder.github.io` with a DNS CNAME and enable "Enforce HTTPS" in Pages.
 
-### nginx (caching + SPA routing)
-
-The whole caching strategy is one rule: **hashed files cache forever, everything else
-revalidates.** Vite fingerprints `/assets/*` (e.g. `index-BnccLqB8.js`), so those can be
-immutable for a year — a new build means a new filename. Everything in the site root is
-*unhashed* and can change in place (`index.html` on every deploy, `eql-items.json` on a data
-swap), so it must revalidate or users get stale references to assets that no longer exist.
-
-```nginx
-# Fingerprinted build assets — filename changes when content does, cache forever.
-location /assets/ {
-    add_header Cache-Control "public, max-age=31536000, immutable";
-    try_files $uri =404;
-}
-
-# Item catalog — swapped in place without a new name, so always revalidate.
-# nginx serves an ETag, so revalidation is a cheap 304 when it hasn't changed.
-location = /eql-items.json {
-    add_header Cache-Control "no-cache";
-}
-
-# Icons / og image / favicon — unhashed but rarely change. A week is a safe middle;
-# bump the filename or purge if you replace one.
-location ~* \.(png|svg|ico|webp)$ {
-    add_header Cache-Control "public, max-age=604800";
-    try_files $uri =404;
-}
-
-# App shell + SPA fallback. index.html points at the hashed assets, so it must never
-# be cached long — otherwise a deploy ships new assets the old HTML can't find.
-location = /index.html {
-    add_header Cache-Control "no-cache";
-}
-location / {
-    try_files $uri $uri/ /index.html;
-}
-```
-
-Note: `add_header` set in a `location` drops any `add_header` inherited from the `server`
-block — so keep security/other headers inside each location, or define them server-wide and
-re-`add_header` them here. Verify with `curl -I https://eqlfilter.com/assets/<file>.js`.
-
-### CloudFlare
-
-CloudFlare's defaults already do most of the right thing; the goal is to let the origin
-headers above drive everything.
-
-- **Caching → Configuration → Browser Cache TTL: "Respect Existing Headers."** Without this,
-  CF overrides our `Cache-Control` with its own TTL and the immutable/no-cache split is lost.
-- **Default behavior is correct out of the box:** CF edge-caches static extensions (`/assets/*.js`,
-  `.css`, `.png`, `.svg`) but does **not** edge-cache `.html` or `.json`. That's exactly what we
-  want — `index.html` and `eql-items.json` keep hitting the origin and revalidating, so deploys
-  and data swaps go live immediately. **Do not turn on a "Cache Everything" page rule** — it
-  would cache `index.html` at the edge and serve stale builds.
-- **On deploy:** nothing to purge. Assets are hashed (new names) and HTML/JSON aren't edge-cached.
-- **On a data swap** (`eql-items.json`): also nothing required, since CF doesn't edge-cache JSON
-  by default. *If* you ever add a Cache Rule that caches it at the edge, purge that URL after a swap
-  (`Caching → Purge → Custom URL`).
-- **Free wins to toggle on:** Brotli, HTTP/3, Always Use HTTPS, Tiered Cache. Skip Auto Minify —
-  Vite already minifies, and CF deprecated it.
-
-Single-page app, so all routes fall back to `index.html` (the `location /` block above).
+Pages sets its own `Cache-Control` (10 min) on every file and that is fine here: Vite fingerprints
+`/assets/*`, so a new build never collides with an old filename, and `index.html` / `eql-items.json`
+pick up changes within the TTL. Single route with hash-based share links, so no SPA fallback is needed.
 
 ## Item catalog (`public/eql-items.json`)
 
@@ -98,7 +40,7 @@ layers span all expansions, and adding them would reintroduce non-classic conten
 |---|---|---|
 | `data/items.classic.json` | EQEMU classic base (`eq_classic.csv`) | `npm run items:import [file.csv]` |
 | `data/items.legends.json` | EQL Wiki scrape (Legends items/overrides) | `npm run items:scrape` |
-| `data/items.custom.json` | names harvested from submitted player `.ini`s | `npm run items:merge -- submissions/*.ini` |
+| `data/items.custom.json` | names harvested from player-exported `.ini`s (drop them in `submissions/`) | `npm run items:merge -- submissions/*.ini` |
 | → `public/eql-items.json` | **merge of all present layers** | `npm run items:build` |
 
 Workflow: refresh a layer (import / scrape / merge), then `npm run items:build` to rebuild the catalog.

@@ -23,7 +23,7 @@
 // parameter names. Everything else works as-is.
 
 const API = "https://eqlwiki.com/api.php";
-const UA = "EQLFilter-item-builder/1.0 (https://eqlfilter.com)";
+const UA = "EQLFilter-item-builder/1.0 (https://eqlfilter.washclof.com)";
 
 // Weapon-skill categories on an item page mean it's a Weapon. (Confirmed against
 // the live wiki: pages carry [[Category:1H Slashing]] etc.)

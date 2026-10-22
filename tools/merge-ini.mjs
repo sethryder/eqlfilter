@@ -15,9 +15,8 @@
 // name stubs only enrich, same as before. Dynamic " +N" enchant suffixes are
 // stripped — the id belongs to the base item (see parseIni in src/App.tsx).
 //
-// The submissions dir is filled by tools/server/submit.php (the app POSTs a
-// copy of any informative import). Actions (Loot/Sell/…) are per-player
-// preference, not item data — ignored.
+// Drop player-exported .ini files into submissions/ (gitignored) by hand.
+// Actions (Loot/Sell/…) are per-player preference, not item data — ignored.
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 
